@@ -6,18 +6,31 @@ import { z } from "zod";
 import { buildGraphData, type GraphNodeData } from "@/lib/graph-data";
 import { createClient } from "@/lib/supabase/server";
 
-// "@eve, walk me through it": one LLM call turns the current claim graph into
-// a guided tour — an ordered walk over real node ids with narration. The
-// client animates the eve cursor through the steps and broadcasts them to the
-// room. No eve session involved; this is a direct, stateless model call.
+// "@eve <question>": one model call that first DECIDES what the question
+// warrants — a quick answer (eve replies in a bubble at your cursor) or a
+// guided tour (the eve cursor walks the room through the graph). Callers pass
+// recent conversation context so eve isn't stateless across chats and tours.
 
 const MAX_CATALOG_NODES = 120;
 const LABEL_CLIP = 160;
+const MAX_CONTEXT_CHARS = 4000;
 
-const tourSchema = z.object({
+const eveSchema = z.object({
+  mode: z
+    .enum(["answer", "tour"])
+    .describe(
+      "answer: the question wants a direct reply (a fact, a count, an opinion, a follow-up to the conversation). tour: the question is best served by walking through several graph nodes in sequence."
+    ),
+  answer: z
+    .string()
+    .describe(
+      "mode=answer: the reply, 1-3 plain sentences. mode=tour: empty string."
+    ),
   intro: z
     .string()
-    .describe("1-2 sentences framing how the graph answers the question"),
+    .describe(
+      "mode=tour: 1-2 sentences framing the walk. mode=answer: empty string."
+    ),
   steps: z
     .array(
       z.object({
@@ -27,12 +40,14 @@ const tourSchema = z.object({
           .describe("1-2 sentences on this node's role in the answer"),
       })
     )
-    .min(2)
-    .max(8),
-  conclusion: z.string().describe("1-2 sentences wrapping up the walk"),
+    .max(8)
+    .describe("mode=tour: 2-8 stops. mode=answer: empty array."),
+  conclusion: z
+    .string()
+    .describe(
+      "mode=tour: 1-2 sentences wrapping up. mode=answer: empty string."
+    ),
 });
-
-export type TourPlan = z.infer<typeof tourSchema> & { tourId: string };
 
 // Prefer Anthropic when the key is present — same policy as the eve agent.
 function selectModel() {
@@ -71,20 +86,15 @@ export async function POST(request: Request) {
   const body = (await request.json().catch(() => null)) as {
     question?: string;
     investigation?: string | null;
+    context?: string;
   } | null;
   const question = body?.question?.trim();
   if (!question) {
     return NextResponse.json({ error: "question required" }, { status: 400 });
   }
+  const context = body?.context?.slice(0, MAX_CONTEXT_CHARS);
 
   const graph = await buildGraphData(body?.investigation ?? null);
-  if (graph.nodes.length < 2) {
-    return NextResponse.json(
-      { error: "not enough of a graph to tour yet" },
-      { status: 422 }
-    );
-  }
-
   const catalog = catalogNodes(graph.nodes);
   const catalogIds = new Set(catalog.map((n) => n.id));
   const catalogLines = catalog
@@ -97,33 +107,36 @@ export async function POST(request: Request) {
 
   const { object } = await generateObject({
     model: selectModel(),
-    schema: tourSchema,
+    schema: eveSchema,
     prompt: [
-      "You are eve, a research guide walking collaborators through a live argument map (an epistemic claim graph).",
+      "You are eve, a research guide embedded in a live argument map (an epistemic claim graph) that a team is exploring together.",
       `A member asked: "${question}"`,
-      "Pick 2-8 nodes that best answer the question, ordered as a walkthrough (e.g. hypothesis -> key supporting claim -> contradicting claim -> open crux). Use EXACT node ids from the catalog. Narrate each stop in 1-2 plain, specific sentences.",
+      "First decide the MODE. Prefer a direct answer for lookups, counts, judgment calls, or follow-ups to the conversation; reserve a tour for questions where physically walking node-to-node through the evidence genuinely helps (e.g. 'walk me through the case for X', 'what supports/contradicts Y'). A tour needs at least 2 meaningful stops using EXACT node ids from the catalog.",
+      context ? `\nCONVERSATION SO FAR:\n${context}` : "",
       "",
       "NODE CATALOG (id | kind | label):",
-      catalogLines,
+      catalogLines || "(the graph is empty so far)",
       "",
       "EDGES:",
       adjacency,
     ].join("\n"),
   });
 
-  // Hallucination guard: drop steps whose node id isn't actually in the graph.
-  const validSteps = object.steps.filter((s) => catalogIds.has(s.nodeId));
-  if (validSteps.length === 0) {
-    return NextResponse.json(
-      { error: "the guide lost the map — try again" },
-      { status: 422 }
-    );
-  }
+  const tourId = crypto.randomUUID();
 
-  return NextResponse.json({
-    tourId: crypto.randomUUID(),
-    intro: object.intro,
-    steps: validSteps,
-    conclusion: object.conclusion,
-  });
+  // Hallucination guard: drop steps whose node id isn't actually in the graph;
+  // a "tour" with no surviving stops degrades gracefully to an answer.
+  const validSteps = object.steps.filter((s) => catalogIds.has(s.nodeId));
+  if (object.mode === "tour" && validSteps.length > 0) {
+    return NextResponse.json({
+      mode: "tour",
+      tourId,
+      intro: object.intro,
+      steps: validSteps,
+      conclusion: object.conclusion,
+    });
+  }
+  const answer =
+    object.answer || object.intro || "I don't have a good answer for that yet.";
+  return NextResponse.json({ mode: "answer", tourId, answer });
 }

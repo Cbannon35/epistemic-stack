@@ -2,7 +2,7 @@
 
 import { SparklesIcon } from "lucide-react";
 import { EVE_COLOR } from "@/lib/realtime/color";
-import { EVE_CURSOR_ID } from "@/lib/realtime/types";
+import { isEveCursorId } from "@/lib/realtime/types";
 
 // Presentational cursor shell. The layer's rAF loop positions the root div
 // (transform) and toggles bubble visibility — nothing here re-renders at
@@ -24,7 +24,7 @@ export function RemoteCursor({
   color: string;
   register: (id: string, refs: Partial<CursorRefs>) => void;
 }) {
-  const isEve = id === EVE_CURSOR_ID;
+  const isEve = isEveCursorId(id);
   return (
     <div
       className="cursor-pop absolute top-0 left-0 opacity-0 transition-opacity duration-300 will-change-transform"

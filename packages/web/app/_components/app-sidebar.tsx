@@ -114,7 +114,9 @@ export function AppSidebar({
                         <span className="min-w-0 flex-1">
                           <span className="line-clamp-2">{inv.title}</span>
                           <span className="text-[10px] text-muted-foreground">
-                            {inv.ownerId === me.userId ? "you" : inv.ownerName}
+                            {inv.ownerId === me.userId
+                              ? "you"
+                              : inv.ownerName.split("@")[0]}
                             {inv.forkedFrom ? " · fork" : ""}
                           </span>
                         </span>

@@ -10,7 +10,7 @@ import { TourPill } from "@/app/_components/presence/tour-pill";
 import { type EveDriver, useTour } from "@/app/_components/presence/use-tour";
 import { useRoom } from "@/app/_components/room-provider";
 import { EVE_COLOR } from "@/lib/realtime/color";
-import { EVE_CURSOR_ID } from "@/lib/realtime/types";
+import { isEveCursorId } from "@/lib/realtime/types";
 import { throttle } from "@/lib/throttle";
 
 const CURSOR_SEND_MS = 40;
@@ -52,7 +52,7 @@ export function CursorLayer() {
   const chatWrapRef = useRef<HTMLDivElement | null>(null);
   const chatInputRef = useRef<HTMLInputElement | null>(null);
   const chatIdleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const { on, send, setActivity } = channel;
+  const { on, send, setActivity, setView } = channel;
 
   const ensureRemote = useCallback((id: string): Remote => {
     let remote = remotesRef.current.get(id);
@@ -66,7 +66,7 @@ export function CursorLayer() {
         lastTs: 0,
         chatTs: 0,
         hold: false,
-        tau: id === EVE_CURSOR_ID ? 250 : 60,
+        tau: isEveCursorId(id) ? 250 : 60,
         el: null,
         bubble: null,
       };
@@ -75,11 +75,11 @@ export function CursorLayer() {
     return remote;
   }, []);
 
-  // The eve tour cursor is driven imperatively through the same registry.
+  // Eve cursors (one per live tour/answer) drive through the same registry.
   const eveDriver = useMemo<EveDriver>(
     () => ({
-      move: (x, y, opts) => {
-        const eve = ensureRemote(EVE_CURSOR_ID);
+      move: (id, x, y, opts) => {
+        const eve = ensureRemote(id);
         eve.tx = x;
         eve.ty = y;
         if (opts?.instant || !eve.hasPos) {
@@ -90,15 +90,15 @@ export function CursorLayer() {
         eve.hold = true;
         eve.lastTs = performance.now();
       },
-      say: (text) => {
-        const eve = ensureRemote(EVE_CURSOR_ID);
+      say: (id, text) => {
+        const eve = ensureRemote(id);
         if (eve.bubble) {
           eve.bubble.textContent = text;
         }
         eve.chatTs = performance.now();
       },
-      hide: () => {
-        const eve = ensureRemote(EVE_CURSOR_ID);
+      hide: (id) => {
+        const eve = ensureRemote(id);
         eve.hold = false;
         eve.lastTs = 0;
         eve.chatTs = 0;
@@ -255,12 +255,14 @@ export function CursorLayer() {
     }, CURSOR_SEND_MS);
     const onMove = (e: PointerEvent) => {
       pointerOverRef.current = true;
+      setView("graph");
       const rect = pane.getBoundingClientRect();
       ownPosRef.current = { x: e.clientX - rect.left, y: e.clientY - rect.top };
       sendCursor(e.clientX, e.clientY);
     };
     const onLeave = () => {
       pointerOverRef.current = false;
+      setView("chat");
       send("cursor", { clientId: me.clientId, gone: true, ts: Date.now() });
     };
     pane.addEventListener("pointermove", onMove, { passive: true });
@@ -269,7 +271,7 @@ export function CursorLayer() {
       pane.removeEventListener("pointermove", onMove);
       pane.removeEventListener("pointerleave", onLeave);
     };
-  }, [storeApi, rf, send, me.clientId]);
+  }, [storeApi, rf, send, setView, me.clientId]);
 
   // ── cursor chat: sending ───────────────────────────────────────────────────
   const sendChatRef = useRef(
@@ -326,7 +328,18 @@ export function CursorLayer() {
       const question = text.replace(/^@eve\s*/, "");
       closeChat(true);
       if (question) {
-        tourRef.current.start(question);
+        // Eve pops in where the question was asked.
+        const own = ownPosRef.current;
+        const pane = storeApi.getState().domNode;
+        const rect = pane?.getBoundingClientRect();
+        const origin =
+          own && rect
+            ? rf.screenToFlowPosition({
+                x: own.x + rect.left,
+                y: own.y + rect.top,
+              })
+            : undefined;
+        tourRef.current.start(question, origin);
       }
       return;
     }
@@ -415,13 +428,15 @@ export function CursorLayer() {
           register={registerRefs}
         />
       ))}
-      <RemoteCursor
-        color={EVE_COLOR}
-        displayName="eve"
-        id={EVE_CURSOR_ID}
-        key={EVE_CURSOR_ID}
-        register={registerRefs}
-      />
+      {tour.eveCursors.map((id) => (
+        <RemoteCursor
+          color={EVE_COLOR}
+          displayName="eve"
+          id={id}
+          key={id}
+          register={registerRefs}
+        />
+      ))}
       <TourPill
         onFollow={tour.follow}
         onStop={tour.stop}

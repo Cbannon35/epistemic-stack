@@ -52,6 +52,8 @@ export type TourStartEvent = {
   hostId: string;
   hostName: string;
   question: string;
+  /** answer: a one-bubble reply at the asker's cursor; tour: a guided walk. */
+  mode: "answer" | "tour";
   totalSteps: number;
   ts: number;
 };
@@ -112,5 +114,7 @@ export const ROOM_EVENTS: readonly RoomEventName[] = [
 
 export const roomTopic = (roomId: string) => `room:${roomId}`;
 
-/** The synthetic presence id the eve tour cursor renders under. */
-export const EVE_CURSOR_ID = "eve";
+/** Cursor-registry ids for eve: one cursor per concurrent tour/answer. */
+export const EVE_CURSOR_PREFIX = "eve:";
+export const eveCursorId = (tourId: string) => `${EVE_CURSOR_PREFIX}${tourId}`;
+export const isEveCursorId = (id: string) => id.startsWith(EVE_CURSOR_PREFIX);

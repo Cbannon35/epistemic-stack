@@ -3,21 +3,30 @@
 import { useReactFlow } from "@xyflow/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRoom } from "@/app/_components/room-provider";
-import type { TourStepEvent } from "@/lib/realtime/types";
+import { eveCursorId, type TourStepEvent } from "@/lib/realtime/types";
 
-const STEP_STALE_MS = 15_000;
+const STEP_STALE_MS = 20_000;
 const MIN_DWELL_MS = 2600;
 const MAX_DWELL_MS = 9000;
 const READ_MS_PER_CHAR = 55;
 const CAMERA_MS = 600;
 const MIN_TOUR_ZOOM = 0.85;
 const MAX_TOUR_ZOOM = 1.2;
+const CONTEXT_MESSAGES = 8;
+const CONTEXT_CLAMP = 320;
+const EVE_MEMORY = 6;
 
-// The eve cursor's puppet strings, implemented by the cursor layer.
+// The eve cursors' puppet strings, implemented by the cursor layer. Each
+// concurrent tour/answer drives its own cursor (id = eveCursorId(tourId)).
 export type EveDriver = {
-  move: (x: number, y: number, opts?: { instant?: boolean }) => void;
-  say: (text: string) => void;
-  hide: () => void;
+  move: (
+    id: string,
+    x: number,
+    y: number,
+    opts?: { instant?: boolean }
+  ) => void;
+  say: (id: string, text: string) => void;
+  hide: (id: string) => void;
 };
 
 export type TourPhase =
@@ -26,14 +35,25 @@ export type TourPhase =
   | { kind: "hosting"; tourId: string; step: number; total: number }
   | { kind: "offered"; tourId: string; hostName: string }
   | { kind: "following"; tourId: string }
-  | { kind: "watching"; tourId: string }
   | { kind: "notice"; text: string };
 
-type TourPlanResponse = {
-  tourId: string;
-  intro: string;
-  steps: Array<{ nodeId: string; narration: string }>;
-  conclusion: string;
+type EvePlanResponse =
+  | { mode: "answer"; tourId: string; answer: string }
+  | {
+      mode: "tour";
+      tourId: string;
+      intro: string;
+      steps: Array<{ nodeId: string; narration: string }>;
+      conclusion: string;
+    };
+
+type ActiveTour = {
+  hostId: string;
+  hostName: string;
+  mode: "answer" | "tour";
+  lastStepAt: number;
+  /** The node this tour currently rings, so concurrent tours don't clobber. */
+  ringNodeId: string | null;
 };
 
 function readingTime(text: string): number {
@@ -43,36 +63,38 @@ function readingTime(text: string): number {
   );
 }
 
-function highlightNode(nodeId: string | null): void {
-  for (const el of document.querySelectorAll(".react-flow__node.tour-ring")) {
-    el.classList.remove("tour-ring");
-  }
-  if (nodeId) {
-    document
-      .querySelector(`.react-flow__node[data-id="${CSS.escape(nodeId)}"]`)
-      ?.classList.add("tour-ring");
-  }
+function setNodeRing(nodeId: string, on: boolean): void {
+  document
+    .querySelector(`.react-flow__node[data-id="${CSS.escape(nodeId)}"]`)
+    ?.classList.toggle("tour-ring", on);
 }
 
-// "@eve <question>" → the asking client HOSTS: it fetches a tour plan, then
-// walks the eve cursor node-to-node, broadcasting each step so every member
-// sees the same walk. Followers resolve node positions against their own
-// layout (identical by construction) and may opt into camera-follow.
+// "@eve <question>" → one model call decides: quick ANSWER (a bubble at the
+// asker's cursor) or a TOUR (the asking client hosts; its eve cursor walks
+// node-to-node, broadcasting steps so the whole room sees the walk). Multiple
+// tours/answers can run at once — each gets its own eve cursor. Context from
+// the room chat and prior eve exchanges rides along so eve isn't stateless.
 export function useTour(eve: EveDriver) {
-  const { channel, me, roomId } = useRoom();
+  const room = useRoom();
+  const { channel, me, roomId } = room;
   const rf = useReactFlow();
   const [phase, setPhase] = useState<TourPhase>({ kind: "idle" });
   const phaseRef = useRef(phase);
   phaseRef.current = phase;
-  // The room's single live tour (host or foreign), for concurrency + staleness.
-  const activeRef = useRef<{
-    tourId: string;
-    hostId: string;
-    lastStepAt: number;
-  } | null>(null);
+  /** Eve cursor ids to render — one per live tour/answer. */
+  const [eveCursors, setEveCursors] = useState<readonly string[]>([]);
+  const toursRef = useRef(new Map<string, ActiveTour>());
   const cancelRef = useRef(false);
   const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** Rolling memory of this tab's eve exchanges, sent as context. */
+  const eveMemoryRef = useRef<string[]>([]);
+  const roomRef = useRef(room);
+  roomRef.current = room;
   const { on, send, setActivity } = channel;
+
+  const syncCursors = useCallback(() => {
+    setEveCursors([...toursRef.current.keys()].map(eveCursorId));
+  }, []);
 
   const notice = useCallback((text: string) => {
     setPhase({ kind: "notice", text });
@@ -100,18 +122,29 @@ export function useTour(eve: EveDriver) {
 
   const applyStep = useCallback(
     (step: TourStepEvent, follow: boolean) => {
+      const tour = toursRef.current.get(step.tourId);
       // Resolve locally first (layouts match across clients); the broadcast
       // x/y only covers nodes missing from a stale local snapshot.
       const center = step.nodeId ? nodeCenter(step.nodeId) : null;
       const x = center?.x ?? step.x;
       const y = center?.y ?? step.y;
-      eve.move(x, y, { instant: step.kind === "intro" });
+      const cursor = eveCursorId(step.tourId);
+      eve.move(cursor, x, y, { instant: step.kind === "intro" });
       eve.say(
+        cursor,
         step.kind === "step"
           ? `${step.narration}  (${step.index}/${step.total})`
           : step.narration
       );
-      highlightNode(step.kind === "step" ? step.nodeId : null);
+      if (tour) {
+        if (tour.ringNodeId) {
+          setNodeRing(tour.ringNodeId, false);
+        }
+        tour.ringNodeId = step.kind === "step" ? step.nodeId : null;
+        if (tour.ringNodeId) {
+          setNodeRing(tour.ringNodeId, true);
+        }
+      }
       if (follow) {
         const zoom = Math.min(
           MAX_TOUR_ZOOM,
@@ -123,11 +156,23 @@ export function useTour(eve: EveDriver) {
     [eve, nodeCenter, rf]
   );
 
-  const teardown = useCallback(() => {
-    activeRef.current = null;
-    highlightNode(null);
-    eve.hide();
-  }, [eve]);
+  const teardown = useCallback(
+    (tourId: string) => {
+      const tour = toursRef.current.get(tourId);
+      if (tour?.ringNodeId) {
+        setNodeRing(tour.ringNodeId, false);
+      }
+      toursRef.current.delete(tourId);
+      eve.hide(eveCursorId(tourId));
+      syncCursors();
+      setPhase((p) =>
+        (p.kind === "offered" || p.kind === "following") && p.tourId === tourId
+          ? { kind: "idle" }
+          : p
+      );
+    },
+    [eve, syncCursors]
+  );
 
   const dwell = useCallback(async (ms: number) => {
     const until = Date.now() + ms;
@@ -137,29 +182,60 @@ export function useTour(eve: EveDriver) {
   }, []);
 
   const stopHosting = useCallback(
-    (reason: "stopped" | "complete", summary?: string) => {
-      const active = activeRef.current;
-      if (active) {
-        send("tour-end", {
-          tourId: active.tourId,
-          hostId: me.clientId,
-          reason,
-          summary,
-          ts: Date.now(),
-        });
-      }
+    (tourId: string, reason: "stopped" | "complete", summary?: string) => {
+      send("tour-end", {
+        tourId,
+        hostId: me.clientId,
+        reason,
+        summary,
+        ts: Date.now(),
+      });
       cancelRef.current = true;
-      teardown();
+      teardown(tourId);
       setActivity("viewing");
       setPhase({ kind: "idle" });
     },
     [send, me.clientId, teardown, setActivity]
   );
 
+  // Recent room chat + this tab's prior eve exchanges → eve's context window.
+  const buildContext = useCallback((): string => {
+    const messages = roomRef.current.data.messages ?? [];
+    const transcript = messages
+      .slice(-CONTEXT_MESSAGES)
+      .map((m) => {
+        const text = m.parts
+          .filter((p) => p.type === "text" && p.text)
+          .map((p) => (p.type === "text" ? p.text : ""))
+          .join(" ")
+          .slice(0, CONTEXT_CLAMP);
+        return text ? `${m.role}: ${text}` : null;
+      })
+      .filter(Boolean)
+      .join("\n");
+    const memory = eveMemoryRef.current.join("\n");
+    return [
+      transcript ? `Chat transcript (recent):\n${transcript}` : null,
+      memory ? `Your recent exchanges in this room:\n${memory}` : null,
+    ]
+      .filter(Boolean)
+      .join("\n\n");
+  }, []);
+
+  const remember = useCallback((question: string, reply: string) => {
+    eveMemoryRef.current.push(
+      `Q (${new Date().toISOString().slice(11, 16)}): ${question}\nA: ${reply.slice(0, 300)}`
+    );
+    if (eveMemoryRef.current.length > EVE_MEMORY) {
+      eveMemoryRef.current.shift();
+    }
+  }, []);
+
   const start = useCallback(
-    async (question: string) => {
-      if (activeRef.current) {
-        notice("a tour is already running");
+    async (question: string, origin?: { x: number; y: number }) => {
+      const current = phaseRef.current;
+      if (current.kind === "hosting" || current.kind === "requesting") {
+        notice("you're already running one — Escape to stop it");
         return;
       }
       if (!roomId) {
@@ -168,12 +244,16 @@ export function useTour(eve: EveDriver) {
       }
       setPhase({ kind: "requesting" });
       setActivity("touring");
-      let plan: TourPlanResponse;
+      let plan: EvePlanResponse;
       try {
         const res = await fetch("/api/tour", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ question, investigation: roomId }),
+          body: JSON.stringify({
+            question,
+            investigation: roomId,
+            context: buildContext(),
+          }),
         });
         if (!res.ok) {
           const err = (await res.json().catch(() => null)) as {
@@ -181,67 +261,108 @@ export function useTour(eve: EveDriver) {
           } | null;
           throw new Error(err?.error ?? "the guide is unavailable");
         }
-        plan = (await res.json()) as TourPlanResponse;
+        plan = (await res.json()) as EvePlanResponse;
       } catch (error) {
-        notice(error instanceof Error ? error.message : "tour failed");
+        notice(error instanceof Error ? error.message : "eve is unavailable");
         setActivity("viewing");
         return;
       }
 
       cancelRef.current = false;
-      activeRef.current = {
-        tourId: plan.tourId,
+      const totalSteps = plan.mode === "tour" ? plan.steps.length : 0;
+      toursRef.current.set(plan.tourId, {
         hostId: me.clientId,
+        hostName: me.displayName,
+        mode: plan.mode,
         lastStepAt: Date.now(),
-      };
+        ringNodeId: null,
+      });
+      syncCursors();
       send("tour-start", {
         tourId: plan.tourId,
         hostId: me.clientId,
         hostName: me.displayName,
         question,
-        totalSteps: plan.steps.length,
+        mode: plan.mode,
+        totalSteps,
         ts: Date.now(),
       });
 
       const emit = (
-        step: Omit<TourStepEvent, "tourId" | "hostId" | "ts">
+        step: Omit<TourStepEvent, "tourId" | "hostId" | "ts">,
+        follow: boolean
       ): void => {
-        const active = activeRef.current;
-        if (!active) {
+        const tour = toursRef.current.get(plan.tourId);
+        if (!tour) {
           return;
         }
-        active.lastStepAt = Date.now();
+        tour.lastStepAt = Date.now();
         const full: TourStepEvent = {
           ...step,
-          tourId: active.tourId,
+          tourId: plan.tourId,
           hostId: me.clientId,
           ts: Date.now(),
         };
         send("tour-step", full);
-        applyStep(full, true);
+        applyStep(full, follow);
       };
 
-      // Intro: eve appears at the current viewport center.
+      // Where eve appears first: the asker's cursor, else viewport center.
       const viewport = rf.getViewport();
       const pane = document.querySelector(".react-flow");
       const rect = pane?.getBoundingClientRect();
-      const cx = rect ? (rect.width / 2 - viewport.x) / viewport.zoom : 0;
-      const cy = rect ? (rect.height / 2 - viewport.y) / viewport.zoom : 0;
+      const fallback = {
+        x: rect ? (rect.width / 2 - viewport.x) / viewport.zoom : 0,
+        y: rect ? (rect.height / 2 - viewport.y) / viewport.zoom : 0,
+      };
+      const spawn = origin ?? fallback;
+
+      if (plan.mode === "answer") {
+        // Quick reply: eve pops in at the asker's cursor, answers, leaves.
+        emit(
+          {
+            kind: "intro",
+            index: 0,
+            total: 0,
+            nodeId: null,
+            narration: plan.answer,
+            x: spawn.x,
+            y: spawn.y,
+          },
+          false
+        );
+        setPhase({ kind: "idle" });
+        setActivity("viewing");
+        remember(question, plan.answer);
+        await dwell(readingTime(plan.answer));
+        send("tour-end", {
+          tourId: plan.tourId,
+          hostId: me.clientId,
+          reason: "complete",
+          ts: Date.now(),
+        });
+        teardown(plan.tourId);
+        return;
+      }
+
       setPhase({
         kind: "hosting",
         tourId: plan.tourId,
         step: 0,
-        total: plan.steps.length,
+        total: totalSteps,
       });
-      emit({
-        kind: "intro",
-        index: 0,
-        total: plan.steps.length,
-        nodeId: null,
-        narration: plan.intro,
-        x: cx,
-        y: cy,
-      });
+      emit(
+        {
+          kind: "intro",
+          index: 0,
+          total: totalSteps,
+          nodeId: null,
+          narration: plan.intro,
+          x: spawn.x,
+          y: spawn.y,
+        },
+        true
+      );
       await dwell(readingTime(plan.intro));
 
       let index = 0;
@@ -258,32 +379,39 @@ export function useTour(eve: EveDriver) {
           kind: "hosting",
           tourId: plan.tourId,
           step: index,
-          total: plan.steps.length,
+          total: totalSteps,
         });
-        emit({
-          kind: "step",
-          index,
-          total: plan.steps.length,
-          nodeId: step.nodeId,
-          narration: step.narration,
-          x: center.x,
-          y: center.y,
-        });
+        emit(
+          {
+            kind: "step",
+            index,
+            total: totalSteps,
+            nodeId: step.nodeId,
+            narration: step.narration,
+            x: center.x,
+            y: center.y,
+          },
+          true
+        );
         await dwell(readingTime(step.narration));
       }
 
       if (!cancelRef.current) {
-        emit({
-          kind: "conclusion",
-          index: plan.steps.length,
-          total: plan.steps.length,
-          nodeId: null,
-          narration: plan.conclusion,
-          x: 0,
-          y: 0,
-        });
+        emit(
+          {
+            kind: "conclusion",
+            index: totalSteps,
+            total: totalSteps,
+            nodeId: null,
+            narration: plan.conclusion,
+            x: 0,
+            y: 0,
+          },
+          false
+        );
+        remember(question, plan.conclusion);
         await dwell(readingTime(plan.conclusion));
-        stopHosting("complete", plan.conclusion);
+        stopHosting(plan.tourId, "complete", plan.conclusion);
       }
     },
     [
@@ -297,6 +425,10 @@ export function useTour(eve: EveDriver) {
       notice,
       setActivity,
       stopHosting,
+      teardown,
+      syncCursors,
+      buildContext,
+      remember,
     ]
   );
 
@@ -305,38 +437,41 @@ export function useTour(eve: EveDriver) {
   useEffect(
     () =>
       on("tour-start", (p) => {
-        const current = phaseRef.current;
-        if (current.kind === "hosting" || current.kind === "requesting") {
-          // Two hosts raced: the lexicographically larger tourId yields.
-          const mine = activeRef.current;
-          if (mine && mine.tourId > p.tourId) {
-            stopHosting("stopped");
-          } else {
-            return;
-          }
+        if (p.hostId === me.clientId) {
+          return;
         }
-        activeRef.current = {
-          tourId: p.tourId,
+        toursRef.current.set(p.tourId, {
           hostId: p.hostId,
+          hostName: p.hostName,
+          mode: p.mode,
           lastStepAt: Date.now(),
-        };
-        setPhase({ kind: "offered", tourId: p.tourId, hostName: p.hostName });
+          ringNodeId: null,
+        });
+        syncCursors();
+        // Only full tours offer camera-follow; answers are just a bubble.
+        if (p.mode === "tour" && phaseRef.current.kind === "idle") {
+          setPhase({ kind: "offered", tourId: p.tourId, hostName: p.hostName });
+        }
       }),
-    [on, stopHosting]
+    [on, me.clientId, syncCursors]
   );
 
   useEffect(
     () =>
       on("tour-step", (p) => {
-        const active = activeRef.current;
-        if (!active || active.tourId !== p.tourId) {
+        const tour = toursRef.current.get(p.tourId);
+        if (!tour) {
           return;
         }
-        active.lastStepAt = Date.now();
+        tour.lastStepAt = Date.now();
         if (p.hostId === me.clientId) {
           return;
         }
-        applyStep(p, phaseRef.current.kind === "following");
+        applyStep(
+          p,
+          phaseRef.current.kind === "following" &&
+            phaseRef.current.tourId === p.tourId
+        );
       }),
     [on, applyStep, me.clientId]
   );
@@ -344,66 +479,70 @@ export function useTour(eve: EveDriver) {
   useEffect(
     () =>
       on("tour-end", (p) => {
-        const active = activeRef.current;
-        if (!active || active.tourId !== p.tourId) {
+        if (!toursRef.current.has(p.tourId)) {
           return;
         }
-        teardown();
+        teardown(p.tourId);
         if (p.summary && p.reason === "complete") {
           notice(`✦ ${p.summary.slice(0, 140)}`);
-        } else {
-          setPhase({ kind: "idle" });
         }
       }),
     [on, teardown, notice]
   );
 
   // A vanished host (closed tab, dropped socket) never sends tour-end: reap
-  // the tour after 15s of step silence.
+  // foreign tours after prolonged step silence.
   useEffect(() => {
     const timer = setInterval(() => {
-      const active = activeRef.current;
-      if (
-        active &&
-        active.hostId !== me.clientId &&
-        Date.now() - active.lastStepAt > STEP_STALE_MS
-      ) {
-        teardown();
-        setPhase({ kind: "idle" });
+      for (const [tourId, tour] of toursRef.current) {
+        if (
+          tour.hostId !== me.clientId &&
+          Date.now() - tour.lastStepAt > STEP_STALE_MS
+        ) {
+          teardown(tourId);
+        }
       }
     }, 5000);
     return () => clearInterval(timer);
   }, [me.clientId, teardown]);
 
-  // Leaving the room mid-hosting ends the tour for everyone.
+  // Leaving the room mid-hosting ends my tours for everyone.
   useEffect(
     () => () => {
-      if (activeRef.current?.hostId === me.clientId) {
-        stopHosting("stopped");
+      for (const [tourId, tour] of toursRef.current) {
+        if (tour.hostId === me.clientId) {
+          send("tour-end", {
+            tourId,
+            hostId: me.clientId,
+            reason: "stopped",
+            ts: Date.now(),
+          });
+        }
       }
+      cancelRef.current = true;
     },
-    [me.clientId, stopHosting]
+    [me.clientId, send]
   );
 
   const follow = useCallback(() => {
-    const active = activeRef.current;
-    if (active) {
-      setPhase({ kind: "following", tourId: active.tourId });
+    const p = phaseRef.current;
+    if (p.kind === "offered") {
+      setPhase({ kind: "following", tourId: p.tourId });
     }
   }, []);
 
   const unfollow = useCallback(() => {
-    const active = activeRef.current;
-    if (active) {
-      setPhase({ kind: "watching", tourId: active.tourId });
-    }
+    setPhase((p) =>
+      p.kind === "following" || p.kind === "offered" ? { kind: "idle" } : p
+    );
   }, []);
 
   const stop = useCallback(() => {
-    if (phaseRef.current.kind === "hosting") {
-      stopHosting("stopped");
+    const p = phaseRef.current;
+    if (p.kind === "hosting") {
+      stopHosting(p.tourId, "stopped");
     }
   }, [stopHosting]);
 
-  return { phase, start, follow, unfollow, stop };
+  return { phase, eveCursors, start, follow, unfollow, stop };
 }

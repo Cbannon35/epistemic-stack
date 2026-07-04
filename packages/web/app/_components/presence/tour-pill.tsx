@@ -67,9 +67,6 @@ export function TourPill({
             </button>
           </>
         ) : null}
-        {phase.kind === "watching" ? (
-          <span className="text-muted-foreground">tour in progress</span>
-        ) : null}
         {phase.kind === "notice" ? (
           <span className="max-w-80 truncate text-muted-foreground">
             {phase.text}
