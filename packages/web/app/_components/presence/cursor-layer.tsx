@@ -15,7 +15,6 @@ import { throttle } from "@/lib/throttle";
 
 const CURSOR_SEND_MS = 40;
 const CHAT_SEND_MS = 90;
-const CURSOR_STALE_MS = 6000;
 const BUBBLE_FADE_MS = 4000;
 const CHAT_IDLE_CLOSE_MS = 10_000;
 
@@ -181,10 +180,11 @@ export function CursorLayer() {
         if (!el) {
           continue;
         }
-        const stale =
-          remote.lastTs === 0 ||
-          (now - remote.lastTs > CURSOR_STALE_MS && !remote.hold);
-        if (stale) {
+        // A parked cursor stays visible (Figma-style) — it only hides when the
+        // peer's pointer left the pane (gone event), they left the room (shell
+        // unmounts), or eve's tour ended. No idle timeout: with one person
+        // driving two windows, a timeout hides the cursor right as you look.
+        if (remote.lastTs === 0 && !remote.hold) {
           el.style.opacity = "0";
           continue;
         }
@@ -216,20 +216,16 @@ export function CursorLayer() {
   }, [storeApi]);
 
   // A window resuming from a background freeze shows its last painted frame;
-  // snap stale cursors hidden instantly instead of letting the opacity
+  // snap departed cursors hidden instantly instead of letting the opacity
   // transition play a half-second "ghost" fade.
   useEffect(() => {
     const onVisible = () => {
       if (document.visibilityState !== "visible") {
         return;
       }
-      const now = performance.now();
       for (const remote of remotesRef.current.values()) {
-        const stale =
-          remote.lastTs === 0 ||
-          (now - remote.lastTs > CURSOR_STALE_MS && !remote.hold);
         const { el } = remote;
-        if (stale && el) {
+        if (remote.lastTs === 0 && !remote.hold && el) {
           el.style.transition = "none";
           el.style.opacity = "0";
           requestAnimationFrame(() => {

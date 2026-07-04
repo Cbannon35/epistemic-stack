@@ -26,7 +26,17 @@ import type { InvestigationListItem } from "@/lib/investigations";
 // server actions must not be invoked mid-render.
 const roomCache = new Map<string, Promise<InvestigationRoom | null>>();
 
+// During SSR there's no origin to fetch against (and no auth cookies to
+// forward) — suspend forever so the server streams the Suspense fallback and
+// the client does the real fetch after hydration.
+const suspendForever = new Promise<never>(() => {
+  // Intentionally never settles.
+});
+
 function loadRoom(id: string): Promise<InvestigationRoom | null> {
+  if (typeof window === "undefined") {
+    return suspendForever;
+  }
   let promise = roomCache.get(id);
   if (!promise) {
     promise = fetch(`/api/room/${encodeURIComponent(id)}`).then(async (res) =>
