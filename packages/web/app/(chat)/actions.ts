@@ -4,7 +4,6 @@ import { ensureContributor } from "@/lib/contributors";
 import {
   getInvestigation,
   insertTurnAuthor,
-  listTurnAuthors,
   saveInvestigationSession,
   type TurnAuthor,
   upsertInvestigation,
@@ -48,6 +47,8 @@ export async function saveInvestigation(input: {
   });
 }
 
+// The room boot snapshot is served by GET /api/room/[id] (a route handler,
+// not a server action, because AppShell loads it during render).
 export type InvestigationRoom = {
   session: unknown;
   events: unknown;
@@ -55,28 +56,6 @@ export type InvestigationRoom = {
   forkedFrom: string | null;
   authors: TurnAuthor[];
 };
-
-// Load a room so any signed-in user can join it: snapshot for boot, the durable
-// stream catches the client up past it. No owner gate — the commons is shared.
-export async function getInvestigationRoom(
-  id: string
-): Promise<InvestigationRoom | null> {
-  const user = await requireUser();
-  if (!user) {
-    return null;
-  }
-  const inv = await getInvestigation(id);
-  if (!inv) {
-    return null;
-  }
-  return {
-    session: inv.sessionState,
-    events: inv.events,
-    title: inv.title,
-    forkedFrom: inv.forkedFrom,
-    authors: await listTurnAuthors(id),
-  };
-}
 
 // Fetched at send time so a member always sends with the current continuation
 // token, even if they joined before other members' turns.

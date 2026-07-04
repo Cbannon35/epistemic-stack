@@ -5,10 +5,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { colorForUser } from "@/lib/realtime/color";
 import {
   type PresenceMeta,
+  type RealtimeIdentity,
   ROOM_EVENTS,
   type RoomEventName,
   type RoomEventPayloads,
-  type RoomIdentity,
   roomTopic,
 } from "@/lib/realtime/types";
 import { createClient } from "@/lib/supabase/client";
@@ -36,7 +36,7 @@ type Handler = (payload: unknown) => void;
 // each effect run builds a fresh channel instance and removes it on cleanup.
 export function useRoomChannel(
   roomId: string | null,
-  identity: RoomIdentity | null
+  identity: RealtimeIdentity | null
 ): RoomChannel {
   const [peers, setPeers] = useState<ReadonlyMap<string, PresenceMeta>>(
     new Map()
@@ -47,18 +47,20 @@ export function useRoomChannel(
   const identityRef = useRef(identity);
   identityRef.current = identity;
 
+  const clientId = identity?.clientId ?? null;
   const userId = identity?.userId ?? null;
   const displayName = identity?.displayName ?? null;
 
   useEffect(() => {
-    if (!(roomId && userId && displayName)) {
+    if (!(roomId && clientId && userId && displayName)) {
       setPeers(new Map());
       return;
     }
     const supabase = createClient();
     const channel = supabase.channel(roomTopic(roomId), {
       config: {
-        presence: { key: userId },
+        // Keyed per TAB: two windows of one account are two participants.
+        presence: { key: clientId },
         broadcast: { self: false, ack: false },
       },
     });
@@ -86,9 +88,10 @@ export function useRoomChannel(
       // Re-track on every (re)join so presence survives reconnects.
       if (status === "SUBSCRIBED") {
         channel.track({
+          clientId,
           userId,
           displayName,
-          color: colorForUser(userId),
+          color: colorForUser(clientId),
           activity: activityRef.current,
           joinedAt: Date.now(),
         } satisfies PresenceMeta);
@@ -99,7 +102,7 @@ export function useRoomChannel(
       channelRef.current = null;
       supabase.removeChannel(channel);
     };
-  }, [roomId, userId, displayName]);
+  }, [roomId, clientId, userId, displayName]);
 
   const send = useCallback(
     <E extends RoomEventName>(event: E, payload: RoomEventPayloads[E]) => {
@@ -132,9 +135,10 @@ export function useRoomChannel(
     const channel = channelRef.current;
     if (channel && id) {
       channel.track({
+        clientId: id.clientId,
         userId: id.userId,
         displayName: id.displayName,
-        color: colorForUser(id.userId),
+        color: colorForUser(id.clientId),
         activity,
         joinedAt: Date.now(),
       } satisfies PresenceMeta);

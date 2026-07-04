@@ -129,7 +129,7 @@ export function CursorLayer() {
   useEffect(
     () =>
       on("cursor", (p) => {
-        const remote = ensureRemote(p.userId);
+        const remote = ensureRemote(p.clientId);
         if ("gone" in p) {
           remote.lastTs = 0;
           return;
@@ -150,7 +150,7 @@ export function CursorLayer() {
   useEffect(
     () =>
       on("cursor-chat", (p) => {
-        const remote = ensureRemote(p.userId);
+        const remote = ensureRemote(p.clientId);
         if (p.done && p.text === "") {
           remote.chatTs = 0;
           return;
@@ -215,6 +215,33 @@ export function CursorLayer() {
     return () => cancelAnimationFrame(raf);
   }, [storeApi]);
 
+  // A window resuming from a background freeze shows its last painted frame;
+  // snap stale cursors hidden instantly instead of letting the opacity
+  // transition play a half-second "ghost" fade.
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState !== "visible") {
+        return;
+      }
+      const now = performance.now();
+      for (const remote of remotesRef.current.values()) {
+        const stale =
+          remote.lastTs === 0 ||
+          (now - remote.lastTs > CURSOR_STALE_MS && !remote.hold);
+        const { el } = remote;
+        if (stale && el) {
+          el.style.transition = "none";
+          el.style.opacity = "0";
+          requestAnimationFrame(() => {
+            el.style.transition = "";
+          });
+        }
+      }
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, []);
+
   // ── send: own pointer in flow coordinates ─────────────────────────────────
   useEffect(() => {
     const pane = storeApi.getState().domNode;
@@ -224,7 +251,7 @@ export function CursorLayer() {
     const sendCursor = throttle((clientX: number, clientY: number) => {
       const flow = rf.screenToFlowPosition({ x: clientX, y: clientY });
       send("cursor", {
-        userId: me.userId,
+        clientId: me.clientId,
         x: flow.x,
         y: flow.y,
         ts: Date.now(),
@@ -238,7 +265,7 @@ export function CursorLayer() {
     };
     const onLeave = () => {
       pointerOverRef.current = false;
-      send("cursor", { userId: me.userId, gone: true, ts: Date.now() });
+      send("cursor", { clientId: me.clientId, gone: true, ts: Date.now() });
     };
     pane.addEventListener("pointermove", onMove, { passive: true });
     pane.addEventListener("pointerleave", onLeave);
@@ -246,13 +273,13 @@ export function CursorLayer() {
       pane.removeEventListener("pointermove", onMove);
       pane.removeEventListener("pointerleave", onLeave);
     };
-  }, [storeApi, rf, send, me.userId]);
+  }, [storeApi, rf, send, me.clientId]);
 
   // ── cursor chat: sending ───────────────────────────────────────────────────
   const sendChatRef = useRef(
     throttle((text: string) => {
       send("cursor-chat", {
-        userId: me.userId,
+        clientId: me.clientId,
         text,
         done: false,
         ts: Date.now(),
@@ -271,14 +298,14 @@ export function CursorLayer() {
       }
       if (broadcast) {
         send("cursor-chat", {
-          userId: me.userId,
+          clientId: me.clientId,
           text: "",
           done: true,
           ts: Date.now(),
         });
       }
     },
-    [send, setActivity, me.userId]
+    [send, setActivity, me.clientId]
   );
 
   const bumpIdleTimer = useCallback(() => {
@@ -309,7 +336,7 @@ export function CursorLayer() {
     }
     if (text) {
       send("cursor-chat", {
-        userId: me.userId,
+        clientId: me.clientId,
         text,
         done: true,
         ts: Date.now(),
@@ -378,7 +405,7 @@ export function CursorLayer() {
   }, [chatOpen, bumpIdleTimer]);
 
   const peers = [...channel.peers.values()].filter(
-    (p) => p.userId !== me.userId
+    (p) => p.clientId !== me.clientId
   );
 
   return (
@@ -387,8 +414,8 @@ export function CursorLayer() {
         <RemoteCursor
           color={peer.color}
           displayName={peer.displayName}
-          id={peer.userId}
-          key={peer.userId}
+          id={peer.clientId}
+          key={peer.clientId}
           register={registerRefs}
         />
       ))}

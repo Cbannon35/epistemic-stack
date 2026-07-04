@@ -14,23 +14,24 @@ import {
 import { AppSidebar } from "@/app/_components/app-sidebar";
 import { NavContext, type NavValue } from "@/app/_components/nav-context";
 import { RoomProvider } from "@/app/_components/room-provider";
-import {
-  getInvestigationRoom,
-  type InvestigationRoom,
-} from "@/app/(chat)/actions";
+import type { InvestigationRoom } from "@/app/(chat)/actions";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { Spinner } from "@/components/ui/spinner";
 import type { InvestigationListItem } from "@/lib/investigations";
 
 // The URL is the room: /i/<sessionId> deep-links into a shared investigation.
 // Loaded snapshots are cached per room id so `use()` gets a stable promise;
-// evicted when the room unmounts so re-entering refetches fresh state.
+// evicted when the room unmounts so re-entering refetches fresh state. Plain
+// fetch (not a server action) — this promise is created during render, and
+// server actions must not be invoked mid-render.
 const roomCache = new Map<string, Promise<InvestigationRoom | null>>();
 
 function loadRoom(id: string): Promise<InvestigationRoom | null> {
   let promise = roomCache.get(id);
   if (!promise) {
-    promise = getInvestigationRoom(id);
+    promise = fetch(`/api/room/${encodeURIComponent(id)}`).then(async (res) =>
+      res.ok ? ((await res.json()) as InvestigationRoom) : null
+    );
     roomCache.set(id, promise);
   }
   return promise;

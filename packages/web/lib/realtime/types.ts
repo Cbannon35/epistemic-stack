@@ -2,9 +2,16 @@
 // Presence carries who's here; broadcast carries everything that moves:
 // cursors, cursor chat, the eve tour, and turn coordination for the chat.
 
-export type RoomIdentity = { userId: string; displayName: string };
+// Identity on the realtime channel is PER TAB (clientId), not per auth user:
+// the same account in two windows is two participants with two live cursors.
+export type RealtimeIdentity = {
+  clientId: string;
+  userId: string;
+  displayName: string;
+};
 
 export type PresenceMeta = {
+  clientId: string;
   userId: string;
   displayName: string;
   color: string;
@@ -14,12 +21,12 @@ export type PresenceMeta = {
 
 /** Broadcast "cursor" — pointer position in FLOW coordinates (throttled). */
 export type CursorEvent =
-  | { userId: string; x: number; y: number; ts: number }
-  | { userId: string; gone: true; ts: number };
+  | { clientId: string; x: number; y: number; ts: number }
+  | { clientId: string; gone: true; ts: number };
 
 /** Broadcast "cursor-chat" — full current text per keystroke, not deltas. */
 export type CursorChatEvent = {
-  userId: string;
+  clientId: string;
   text: string;
   /** Enter (commit) or Escape/idle (text === "" clears the bubble). */
   done: boolean;

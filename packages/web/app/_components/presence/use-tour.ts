@@ -142,7 +142,7 @@ export function useTour(eve: EveDriver) {
       if (active) {
         send("tour-end", {
           tourId: active.tourId,
-          hostId: me.userId,
+          hostId: me.clientId,
           reason,
           summary,
           ts: Date.now(),
@@ -153,7 +153,7 @@ export function useTour(eve: EveDriver) {
       setActivity("viewing");
       setPhase({ kind: "idle" });
     },
-    [send, me.userId, teardown, setActivity]
+    [send, me.clientId, teardown, setActivity]
   );
 
   const start = useCallback(
@@ -191,12 +191,12 @@ export function useTour(eve: EveDriver) {
       cancelRef.current = false;
       activeRef.current = {
         tourId: plan.tourId,
-        hostId: me.userId,
+        hostId: me.clientId,
         lastStepAt: Date.now(),
       };
       send("tour-start", {
         tourId: plan.tourId,
-        hostId: me.userId,
+        hostId: me.clientId,
         hostName: me.displayName,
         question,
         totalSteps: plan.steps.length,
@@ -214,7 +214,7 @@ export function useTour(eve: EveDriver) {
         const full: TourStepEvent = {
           ...step,
           tourId: active.tourId,
-          hostId: me.userId,
+          hostId: me.clientId,
           ts: Date.now(),
         };
         send("tour-step", full);
@@ -333,12 +333,12 @@ export function useTour(eve: EveDriver) {
           return;
         }
         active.lastStepAt = Date.now();
-        if (p.hostId === me.userId) {
+        if (p.hostId === me.clientId) {
           return;
         }
         applyStep(p, phaseRef.current.kind === "following");
       }),
-    [on, applyStep, me.userId]
+    [on, applyStep, me.clientId]
   );
 
   useEffect(
@@ -365,7 +365,7 @@ export function useTour(eve: EveDriver) {
       const active = activeRef.current;
       if (
         active &&
-        active.hostId !== me.userId &&
+        active.hostId !== me.clientId &&
         Date.now() - active.lastStepAt > STEP_STALE_MS
       ) {
         teardown();
@@ -373,16 +373,16 @@ export function useTour(eve: EveDriver) {
       }
     }, 5000);
     return () => clearInterval(timer);
-  }, [me.userId, teardown]);
+  }, [me.clientId, teardown]);
 
   // Leaving the room mid-hosting ends the tour for everyone.
   useEffect(
     () => () => {
-      if (activeRef.current?.hostId === me.userId) {
+      if (activeRef.current?.hostId === me.clientId) {
         stopHosting("stopped");
       }
     },
-    [me.userId, stopHosting]
+    [me.clientId, stopHosting]
   );
 
   const follow = useCallback(() => {

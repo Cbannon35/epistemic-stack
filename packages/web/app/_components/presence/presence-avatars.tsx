@@ -24,7 +24,7 @@ export function PresenceAvatars() {
       {shown.map((peer) => (
         <span
           className="flex size-5 items-center justify-center rounded-full font-medium text-[9px] text-white ring-2 ring-background"
-          key={peer.userId}
+          key={peer.clientId}
           style={{ backgroundColor: peer.color }}
           title={
             peer.activity === "viewing"

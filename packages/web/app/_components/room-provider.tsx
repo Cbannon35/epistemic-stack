@@ -12,7 +12,8 @@ import {
 import type { InvestigationRoom } from "@/app/(chat)/actions";
 import { getForkSeed } from "@/app/(chat)/actions";
 import { type RoomChannel, useRoomChannel } from "@/hooks/use-room-channel";
-import type { RoomEventPayloads } from "@/lib/realtime/types";
+import { getClientId } from "@/lib/realtime/client-id";
+import type { RealtimeIdentity, RoomEventPayloads } from "@/lib/realtime/types";
 import {
   type RoomIdentity,
   type RoomSnapshot,
@@ -26,7 +27,7 @@ import {
 export type RoomValue = RoomSnapshot & {
   send: (input: { message: string }) => Promise<void>;
   stop: () => void;
-  me: RoomIdentity;
+  me: RealtimeIdentity;
   roomId: string | null;
   /** Set while this (unsent) room is a pending fork of another investigation. */
   forkFrom: string | null;
@@ -74,10 +75,17 @@ export function RoomProvider({
     store.getSnapshot
   );
 
+  // Realtime identity is per tab: two windows of one account are two cursors.
+  const identity: RealtimeIdentity = {
+    clientId: getClientId(),
+    userId: me.userId,
+    displayName: me.displayName,
+  };
+
   // The channel follows the live session id (a new room only gets a channel —
   // presence, cursors — once its first send assigns an id).
   const liveRoomId = snapshot.session.sessionId ?? roomId;
-  const channel = useRoomChannel(liveRoomId, me);
+  const channel = useRoomChannel(liveRoomId, identity);
 
   const { send: channelSend, on: channelOn } = channel;
 
@@ -111,7 +119,7 @@ export function RoomProvider({
     ...snapshot,
     send: store.send,
     stop: store.stop,
-    me,
+    me: identity,
     roomId: liveRoomId,
     forkFrom,
     store,
