@@ -262,7 +262,7 @@ export async function recordCrux(input: {
   question: string;
   implication?: string;
   sessionId?: string;
-}): Promise<{ ok: boolean; error?: string }> {
+}): Promise<{ ok: boolean; error?: string; cruxId?: string }> {
   const rows = await db
     .select({ id: schema.claims.canonicalId })
     .from(schema.claims)
@@ -278,14 +278,17 @@ export async function recordCrux(input: {
     input.question,
     input.sessionId
   );
-  await db.insert(schema.cruxes).values({
-    claimId: input.claimId,
-    question: input.question,
-    implication: input.implication,
-    status: "open",
-    contributionId,
-  });
-  return { ok: true };
+  const [inserted] = await db
+    .insert(schema.cruxes)
+    .values({
+      claimId: input.claimId,
+      question: input.question,
+      implication: input.implication,
+      status: "open",
+      contributionId,
+    })
+    .returning({ id: schema.cruxes.id });
+  return { ok: true, cruxId: inserted?.id };
 }
 
 // A competing explanation for the question (e.g. "lab leak" vs "zoonotic").

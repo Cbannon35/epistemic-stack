@@ -29,6 +29,6 @@ export default defineTool({
     if (!result.ok) {
       return { ok: false, error: result.error };
     }
-    return { ok: true, claim_id, question };
+    return { ok: true, crux_id: result.cruxId, claim_id, question };
   },
 });

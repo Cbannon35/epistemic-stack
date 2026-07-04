@@ -1,7 +1,9 @@
 "use client";
 
+import type { EveMessage } from "eve/client";
 import { SearchIcon } from "lucide-react";
 import type { FormEvent, ReactNode } from "react";
+import { MessagePart } from "@/app/_components/chat/message-parts";
 import { useRoom } from "@/app/_components/room-provider";
 import {
   Conversation,
@@ -9,11 +11,7 @@ import {
   ConversationEmptyState,
   ConversationScrollButton,
 } from "@/components/ai-elements/conversation";
-import {
-  Message,
-  MessageContent,
-  MessageResponse,
-} from "@/components/ai-elements/message";
+import { Message, MessageContent } from "@/components/ai-elements/message";
 import {
   PromptInput,
   PromptInputSubmit,
@@ -21,29 +19,9 @@ import {
 } from "@/components/ai-elements/prompt-input";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 
-type Part = { type?: string; text?: string };
-type Msg = {
-  id: string;
-  role: "user" | "assistant" | "system";
-  parts?: Part[];
-  text?: string;
-  metadata?: { turnId?: string };
-};
-
-// Concatenate the text parts of a message. Non-text parts (reasoning, tool
-// calls, step markers) are elided for now; they render as dedicated blocks once
-// the commons tools land.
-function textOf(m: Msg): string {
-  const fromParts = (m.parts ?? [])
-    .filter((p) => p.type === "text" && p.text)
-    .map((p) => p.text as string)
-    .join("\n\n");
-  return fromParts || m.text || "";
-}
-
 export function AgentChat({ headerActions }: { headerActions?: ReactNode }) {
   const room = useRoom();
-  const messages = (room.data as { messages?: Msg[] })?.messages ?? [];
+  const messages: readonly EveMessage[] = room.data.messages ?? [];
   const isEmpty = messages.length === 0;
   const busy = room.status === "submitted" || room.status === "streaming";
   const foreignTurn =
@@ -52,7 +30,7 @@ export function AgentChat({ headerActions }: { headerActions?: ReactNode }) {
         "another researcher")
       : null;
 
-  const authorOf = (m: Msg): string | null => {
+  const authorOf = (m: EveMessage): string | null => {
     if (m.role !== "user") {
       return null;
     }
@@ -107,7 +85,14 @@ export function AgentChat({ headerActions }: { headerActions?: ReactNode }) {
                         {author}
                       </span>
                     ) : null}
-                    <MessageResponse>{textOf(m)}</MessageResponse>
+                    {m.parts.map((part, index) => (
+                      <MessagePart
+                        // Parts are append-only within a message; index keys are stable.
+                        // biome-ignore lint/suspicious/noArrayIndexKey: see above
+                        key={`${m.id}:${index}`}
+                        part={part}
+                      />
+                    ))}
                   </MessageContent>
                 </Message>
               );

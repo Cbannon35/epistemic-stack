@@ -1,8 +1,9 @@
 "use client";
 
 import { PanelRightOpenIcon } from "lucide-react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AgentChat } from "@/app/_components/agent-chat";
+import { graphBus } from "@/app/_components/graph/graph-bus";
 import { GraphPanel } from "@/app/_components/graph-panel";
 
 const MIN_CHAT_PX = 380;
@@ -20,6 +21,9 @@ export function Workspace() {
   // Graph share of the split, in percent — stays proportional on window resize.
   const [graphPct, setGraphPct] = useState(DEFAULT_GRAPH_PCT);
   const [dragging, setDragging] = useState(false);
+
+  // Clicking a tool card in the chat always reveals the graph it points into.
+  useEffect(() => graphBus.on("focusNode", () => setGraphOpen(true)), []);
 
   // Clamp so neither pane collapses below its usable minimum.
   const clampPct = (pct: number) => {

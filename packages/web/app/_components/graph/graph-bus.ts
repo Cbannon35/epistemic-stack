@@ -1,0 +1,35 @@
+// Tiny module-singleton event bus bridging the chat (tool cards) and the
+// graph panel (focus/center a node) without threading props through the tree.
+
+type GraphBusEvents = {
+  focusNode: { nodeId: string };
+};
+
+type AnyHandler = (payload: never) => void;
+
+const listeners = new Map<keyof GraphBusEvents, Set<AnyHandler>>();
+
+export const graphBus = {
+  on<E extends keyof GraphBusEvents>(
+    event: E,
+    handler: (payload: GraphBusEvents[E]) => void
+  ): () => void {
+    let set = listeners.get(event);
+    if (!set) {
+      set = new Set();
+      listeners.set(event, set);
+    }
+    set.add(handler as AnyHandler);
+    return () => {
+      set.delete(handler as AnyHandler);
+    };
+  },
+  emit<E extends keyof GraphBusEvents>(
+    event: E,
+    payload: GraphBusEvents[E]
+  ): void {
+    for (const handler of listeners.get(event) ?? []) {
+      (handler as (p: GraphBusEvents[E]) => void)(payload);
+    }
+  },
+};

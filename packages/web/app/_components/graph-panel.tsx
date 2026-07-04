@@ -6,6 +6,7 @@ import {
   type Edge,
   type Node,
   ReactFlow,
+  type ReactFlowInstance,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import {
@@ -18,6 +19,7 @@ import {
 import { PanelRightCloseIcon, RefreshCwIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AssessmentPanel } from "@/app/_components/graph/assessment-panel";
+import { graphBus } from "@/app/_components/graph/graph-bus";
 import { Inspector } from "@/app/_components/graph/inspector";
 import { nodeTypes } from "@/app/_components/graph/nodes";
 import { EDGE_STYLE, type GraphData } from "@/app/_components/graph/types";
@@ -128,6 +130,51 @@ export function GraphPanel({ onClose }: { onClose?: () => void }) {
   invRef.current = investigation;
   const commonsRef = useRef(commonsMode);
   commonsRef.current = commonsMode;
+  const rfRef = useRef<ReactFlowInstance | null>(null);
+  const dataRef = useRef<GraphData | null>(null);
+  dataRef.current = data;
+  const positionsRef = useRef(positions);
+  positionsRef.current = positions;
+
+  // Chat tool cards focus their graph node through the bus: reveal the kind's
+  // filter if hidden, select, and glide the camera over.
+  useEffect(
+    () =>
+      graphBus.on("focusNode", ({ nodeId }) => {
+        const node = dataRef.current?.nodes.find((n) => n.id === nodeId);
+        if (!node) {
+          return;
+        }
+        if (node.kind === "source") {
+          setShowSources(true);
+        }
+        if (node.kind === "crux") {
+          setShowCruxes(true);
+        }
+        setSelectedId(nodeId);
+        // Wait a frame so a just-unfiltered node exists before centering.
+        requestAnimationFrame(() => {
+          const rf = rfRef.current;
+          if (!rf) {
+            return;
+          }
+          const rfNode = rf.getNode(nodeId);
+          const pos = rfNode
+            ? {
+                x: rfNode.position.x + (rfNode.measured?.width ?? 200) / 2,
+                y: rfNode.position.y + (rfNode.measured?.height ?? 60) / 2,
+              }
+            : positionsRef.current.get(nodeId);
+          if (pos) {
+            rf.setCenter(pos.x, pos.y, {
+              duration: 400,
+              zoom: Math.max(rf.getZoom(), 0.9),
+            });
+          }
+        });
+      }),
+    []
+  );
 
   const load = useCallback(async (force = false) => {
     const commons = commonsRef.current;
@@ -347,6 +394,9 @@ export function GraphPanel({ onClose }: { onClose?: () => void }) {
         nodes={rfNodes}
         nodesDraggable={false}
         nodeTypes={nodeTypes}
+        onInit={(instance) => {
+          rfRef.current = instance;
+        }}
         onNodeClick={(_, node) => setSelectedId(node.id)}
         onPaneClick={() => setSelectedId(null)}
         proOptions={{ hideAttribution: true }}
