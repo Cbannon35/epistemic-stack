@@ -1,8 +1,10 @@
 "use client";
 
 import { LogOutIcon, PlusIcon, SearchIcon } from "lucide-react";
-import { useEveChat } from "@/app/_components/eve-session";
+import Link from "next/link";
+import { useParams } from "next/navigation";
 import { useNav } from "@/app/_components/nav-context";
+import { useRoom } from "@/app/_components/room-provider";
 import { signOut } from "@/app/(auth)/actions";
 import {
   Sidebar,
@@ -16,26 +18,22 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
+import type { InvestigationListItem } from "@/lib/investigations";
 
 type Msg = {
   role: string;
-  parts?: Array<{ type?: string; text?: string }>;
-  text?: string;
+  parts?: ReadonlyArray<{ type?: string; text?: string }>;
 };
-type Investigation = { id: string; title: string };
 
-function firstUserQuestion(messages: Msg[]): string | null {
+function firstUserQuestion(messages: readonly Msg[]): string | null {
   const first = messages.find((m) => m.role === "user");
   if (!first) {
     return null;
   }
-  const text =
-    (first.parts ?? [])
-      .filter((p) => p.type === "text" && p.text)
-      .map((p) => p.text)
-      .join(" ") ||
-    first.text ||
-    "";
+  const text = (first.parts ?? [])
+    .filter((p) => p.type === "text" && p.text)
+    .map((p) => p.text)
+    .join(" ");
   return text.trim() || null;
 }
 
@@ -43,21 +41,26 @@ const itemClass =
   "h-auto items-start justify-start whitespace-normal py-1.5 text-left";
 
 export function AppSidebar({
-  userEmail,
+  me,
   investigations,
 }: {
-  userEmail: string | null;
-  investigations: Investigation[];
+  me: { userId: string; displayName: string };
+  investigations: InvestigationListItem[];
 }) {
-  const agent = useEveChat();
-  const { selectedId, newInvestigation, selectInvestigation } = useNav();
-  const messages = (agent.data as { messages?: Msg[] })?.messages ?? [];
-  // The open investigation is the resumed selection, or the live session's id.
-  const currentId = selectedId ?? agent.session?.sessionId;
+  const room = useRoom();
+  const { newInvestigation } = useNav();
+  const params = useParams<{ id?: string }>();
+  const messages = (room.data as { messages?: readonly Msg[] })?.messages ?? [];
+  // The open investigation: the route's id, or the live session's id.
+  const currentId =
+    (typeof params.id === "string" ? params.id : null) ??
+    room.session.sessionId ??
+    null;
   const liveTitle = firstUserQuestion(messages);
   const currentPersisted = Boolean(
     currentId && investigations.some((i) => i.id === currentId)
   );
+  // A just-started room shows as a synthetic row until router.refresh lands it.
   const showLiveCurrent = Boolean(liveTitle) && !currentPersisted;
 
   return (
@@ -97,12 +100,19 @@ export function AppSidebar({
                 {investigations.map((inv) => (
                   <SidebarMenuItem key={inv.id}>
                     <SidebarMenuButton
+                      asChild
                       className={itemClass}
                       isActive={inv.id === currentId}
-                      onClick={() => selectInvestigation(inv.id)}
                     >
-                      <SearchIcon className="mt-0.5 size-4 shrink-0" />
-                      <span className="line-clamp-2">{inv.title}</span>
+                      <Link href={`/i/${encodeURIComponent(inv.id)}`}>
+                        <SearchIcon className="mt-0.5 size-4 shrink-0" />
+                        <span className="min-w-0 flex-1">
+                          <span className="line-clamp-2">{inv.title}</span>
+                          <span className="text-[10px] text-muted-foreground">
+                            {inv.ownerId === me.userId ? "you" : inv.ownerName}
+                          </span>
+                        </span>
+                      </Link>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                 ))}
@@ -117,21 +127,17 @@ export function AppSidebar({
       </SidebarContent>
 
       <SidebarFooter className="p-3">
-        {userEmail ? (
-          <div className="flex flex-col gap-1">
-            <span className="truncate px-1 text-muted-foreground text-xs">
-              {userEmail}
-            </span>
-            <form action={signOut}>
-              <SidebarMenuButton className="justify-start" type="submit">
-                <LogOutIcon className="size-4" />
-                Sign out
-              </SidebarMenuButton>
-            </form>
-          </div>
-        ) : (
-          <p className="px-1 text-muted-foreground text-xs">Signed out</p>
-        )}
+        <div className="flex flex-col gap-1">
+          <span className="truncate px-1 text-muted-foreground text-xs">
+            {me.displayName}
+          </span>
+          <form action={signOut}>
+            <SidebarMenuButton className="justify-start" type="submit">
+              <LogOutIcon className="size-4" />
+              Sign out
+            </SidebarMenuButton>
+          </form>
+        </div>
       </SidebarFooter>
     </Sidebar>
   );

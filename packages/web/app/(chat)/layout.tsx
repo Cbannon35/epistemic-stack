@@ -20,10 +20,13 @@ export default async function Layout({
     redirect("/login");
   }
 
-  const investigations = await listInvestigations(user.id);
+  const investigations = await listInvestigations();
 
   return (
-    <AppShell investigations={investigations} userEmail={user.email ?? null}>
+    <AppShell
+      investigations={investigations}
+      user={{ id: user.id, email: user.email ?? null }}
+    >
       {children}
     </AppShell>
   );

@@ -2,7 +2,7 @@
 
 import { SearchIcon } from "lucide-react";
 import type { FormEvent, ReactNode } from "react";
-import { useEveChat } from "@/app/_components/eve-session";
+import { useRoom } from "@/app/_components/room-provider";
 import {
   Conversation,
   ConversationContent,
@@ -27,6 +27,7 @@ type Msg = {
   role: "user" | "assistant" | "system";
   parts?: Part[];
   text?: string;
+  metadata?: { turnId?: string };
 };
 
 // Concatenate the text parts of a message. Non-text parts (reasoning, tool
@@ -41,18 +42,33 @@ function textOf(m: Msg): string {
 }
 
 export function AgentChat({ headerActions }: { headerActions?: ReactNode }) {
-  const agent = useEveChat();
-  const messages = (agent.data as { messages?: Msg[] })?.messages ?? [];
+  const room = useRoom();
+  const messages = (room.data as { messages?: Msg[] })?.messages ?? [];
   const isEmpty = messages.length === 0;
-  const busy = agent.status === "submitted" || agent.status === "streaming";
+  const busy = room.status === "submitted" || room.status === "streaming";
+  const foreignTurn =
+    room.activeTurn && !room.activeTurn.mine
+      ? (room.authors.get(room.activeTurn.turnId)?.displayName ??
+        "another researcher")
+      : null;
+
+  const authorOf = (m: Msg): string | null => {
+    if (m.role !== "user") {
+      return null;
+    }
+    const turnId = m.metadata?.turnId;
+    const name = turnId ? room.authors.get(turnId)?.displayName : null;
+    // Optimistic messages have no turn id yet — they're always mine.
+    return name ?? (turnId ? null : room.me.displayName);
+  };
 
   const handleSubmit = (message: { text?: string }, event: FormEvent) => {
     event.preventDefault();
     const text = message.text?.trim();
-    if (!text || busy) {
+    if (!text || busy || room.completed) {
       return;
     }
-    agent.send({ message: text });
+    room.send({ message: text });
   };
 
   return (
@@ -63,10 +79,10 @@ export function AgentChat({ headerActions }: { headerActions?: ReactNode }) {
         {busy ? (
           <span
             className="fade-in flex items-center gap-1.5 text-muted-foreground text-xs"
-            title={agent.status}
+            title={room.status}
           >
             <span className="size-1.5 animate-pulse rounded-full bg-emerald-500" />
-            researching…
+            {foreignTurn ? `${foreignTurn} is asking…` : "researching…"}
           </span>
         ) : null}
         <span className="ml-auto flex items-center gap-2">{headerActions}</span>
@@ -81,28 +97,48 @@ export function AgentChat({ headerActions }: { headerActions?: ReactNode }) {
               title="Start an investigation"
             />
           ) : (
-            messages.map((m) => (
-              <Message className="message-fade-in" from={m.role} key={m.id}>
-                <MessageContent>
-                  <MessageResponse>{textOf(m)}</MessageResponse>
-                </MessageContent>
-              </Message>
-            ))
+            messages.map((m) => {
+              const author = authorOf(m);
+              return (
+                <Message className="message-fade-in" from={m.role} key={m.id}>
+                  <MessageContent>
+                    {author ? (
+                      <span className="mb-0.5 block text-[10px] text-muted-foreground">
+                        {author}
+                      </span>
+                    ) : null}
+                    <MessageResponse>{textOf(m)}</MessageResponse>
+                  </MessageContent>
+                </Message>
+              );
+            })
           )}
         </ConversationContent>
         <ConversationScrollButton />
       </Conversation>
 
-      {agent.error ? (
+      {room.error ? (
         <p className="mx-auto w-full max-w-3xl px-4 pb-2 text-destructive text-sm">
-          {agent.error.message}
+          {room.error.message}
         </p>
       ) : null}
 
       <div className="mx-auto w-full max-w-3xl p-4">
         <PromptInput onSubmit={handleSubmit}>
-          <PromptInputTextarea placeholder="Ask a research question…" />
-          <PromptInputSubmit status={agent.status} />
+          <PromptInputTextarea
+            disabled={room.completed}
+            placeholder={
+              room.completed
+                ? "This investigation has concluded."
+                : foreignTurn
+                  ? `${foreignTurn} is asking…`
+                  : "Ask a research question…"
+            }
+          />
+          <PromptInputSubmit
+            disabled={busy || room.completed}
+            status={room.status}
+          />
         </PromptInput>
       </div>
     </main>

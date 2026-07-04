@@ -17,11 +17,11 @@ import {
 } from "d3-force";
 import { PanelRightCloseIcon, RefreshCwIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useEveChat } from "@/app/_components/eve-session";
 import { AssessmentPanel } from "@/app/_components/graph/assessment-panel";
 import { Inspector } from "@/app/_components/graph/inspector";
 import { nodeTypes } from "@/app/_components/graph/nodes";
 import { EDGE_STYLE, type GraphData } from "@/app/_components/graph/types";
+import { useRoom } from "@/app/_components/room-provider";
 import { createClient } from "@/lib/supabase/client";
 
 function layout(data: GraphData): Map<string, { x: number; y: number }> {
@@ -110,8 +110,8 @@ export function GraphPanel({ onClose }: { onClose?: () => void }) {
   const [commonsMode, setCommonsMode] = useState(false);
 
   const sigRef = useRef("");
-  const agent = useEveChat();
-  const investigation = agent.session?.sessionId ?? null;
+  const room = useRoom();
+  const investigation = room.roomId;
   const invRef = useRef<string | null>(investigation);
   invRef.current = investigation;
   const commonsRef = useRef(commonsMode);

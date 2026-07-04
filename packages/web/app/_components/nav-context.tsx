@@ -2,13 +2,10 @@
 
 import { createContext, useContext } from "react";
 
-// Which investigation is open + how to switch — lifted client state shared by the
-// sidebar and the session shell (not the URL, which doesn't re-render reliably
-// from a layout).
+// Room selection lives in the URL (/i/<id>); the only nav action left is
+// starting a fresh investigation (which also busts the live-room guard).
 export type NavValue = {
-  selectedId: string | null;
   newInvestigation: () => void;
-  selectInvestigation: (id: string) => void;
 };
 
 export const NavContext = createContext<NavValue | null>(null);
