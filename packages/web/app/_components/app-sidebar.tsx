@@ -1,6 +1,6 @@
 "use client";
 
-import { LogOutIcon, PlusIcon, SearchIcon } from "lucide-react";
+import { GitForkIcon, LogOutIcon, PlusIcon, SearchIcon } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useNav } from "@/app/_components/nav-context";
@@ -105,11 +105,16 @@ export function AppSidebar({
                       isActive={inv.id === currentId}
                     >
                       <Link href={`/i/${encodeURIComponent(inv.id)}`}>
-                        <SearchIcon className="mt-0.5 size-4 shrink-0" />
+                        {inv.forkedFrom ? (
+                          <GitForkIcon className="mt-0.5 size-4 shrink-0" />
+                        ) : (
+                          <SearchIcon className="mt-0.5 size-4 shrink-0" />
+                        )}
                         <span className="min-w-0 flex-1">
                           <span className="line-clamp-2">{inv.title}</span>
                           <span className="text-[10px] text-muted-foreground">
                             {inv.ownerId === me.userId ? "you" : inv.ownerName}
+                            {inv.forkedFrom ? " · fork" : ""}
                           </span>
                         </span>
                       </Link>

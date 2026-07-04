@@ -1,7 +1,8 @@
 "use client";
 
 import type { EveMessage } from "eve/client";
-import { SearchIcon } from "lucide-react";
+import { GitForkIcon, SearchIcon } from "lucide-react";
+import { useRouter } from "next/navigation";
 import type { FormEvent, ReactNode } from "react";
 import { MessagePart } from "@/app/_components/chat/message-parts";
 import { useRoom } from "@/app/_components/room-provider";
@@ -21,6 +22,7 @@ import { SidebarTrigger } from "@/components/ui/sidebar";
 
 export function AgentChat({ headerActions }: { headerActions?: ReactNode }) {
   const room = useRoom();
+  const router = useRouter();
   const messages: readonly EveMessage[] = room.data.messages ?? [];
   const isEmpty = messages.length === 0;
   const busy = room.status === "submitted" || room.status === "streaming";
@@ -63,16 +65,47 @@ export function AgentChat({ headerActions }: { headerActions?: ReactNode }) {
             {foreignTurn ? `${foreignTurn} is asking…` : "researching…"}
           </span>
         ) : null}
-        <span className="ml-auto flex items-center gap-2">{headerActions}</span>
+        <span className="ml-auto flex items-center gap-2">
+          {room.session.sessionId ? (
+            <button
+              className="inline-flex items-center gap-1.5 rounded-md border border-border/60 px-2 py-1 text-muted-foreground text-xs transition-[background-color,border-color,color,transform] duration-150 hover:bg-muted hover:text-foreground active:scale-[0.97] active:bg-muted"
+              onClick={() =>
+                router.push(
+                  `/?fork=${encodeURIComponent(room.session.sessionId as string)}`
+                )
+              }
+              title="Branch a new investigation that starts from this one's claim graph"
+              type="button"
+            >
+              <GitForkIcon className="size-3.5" />
+              Fork
+            </button>
+          ) : null}
+          {headerActions}
+        </span>
       </header>
 
       <Conversation className="min-h-0 flex-1">
         <ConversationContent className="mx-auto w-full max-w-3xl">
           {isEmpty ? (
             <ConversationEmptyState
-              description="Ask a contested, settled, or everyday question — I'll build a sourced claim graph."
-              icon={<SearchIcon className="size-5" />}
-              title="Start an investigation"
+              description={
+                room.forkFrom
+                  ? "This branch starts from the parent's claim graph — ask where to take it next."
+                  : "Ask a contested, settled, or everyday question — I'll build a sourced claim graph."
+              }
+              icon={
+                room.forkFrom ? (
+                  <GitForkIcon className="size-5" />
+                ) : (
+                  <SearchIcon className="size-5" />
+                )
+              }
+              title={
+                room.forkFrom
+                  ? "Fork an investigation"
+                  : "Start an investigation"
+              }
             />
           ) : (
             messages.map((m) => {

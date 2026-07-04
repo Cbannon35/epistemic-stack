@@ -28,6 +28,8 @@ export type RoomValue = RoomSnapshot & {
   stop: () => void;
   me: RoomIdentity;
   roomId: string | null;
+  /** Set while this (unsent) room is a pending fork of another investigation. */
+  forkFrom: string | null;
   store: RoomStore;
   channel: RoomChannel;
 };
@@ -111,6 +113,7 @@ export function RoomProvider({
     stop: store.stop,
     me,
     roomId: liveRoomId,
+    forkFrom,
     store,
     channel,
   };
