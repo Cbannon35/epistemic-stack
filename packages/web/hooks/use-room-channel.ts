@@ -89,7 +89,9 @@ export function useRoomChannel(
         new Map(
           Object.entries(state)
             .filter(([, metas]) => metas.length > 0)
-            .map(([key, metas]) => [key, metas[0]])
+            // Re-tracks APPEND metas rather than replace — the freshest
+            // payload (e.g. a view change) is the LAST entry, not the first.
+            .map(([key, metas]) => [key, metas.at(-1) as PresenceMeta])
         )
       );
     });

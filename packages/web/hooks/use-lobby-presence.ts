@@ -40,7 +40,8 @@ export function useLobbyPresence(
       const state = channel.presenceState<LobbyMeta>();
       const next = new Map<string, LobbyMeta[]>();
       for (const metas of Object.values(state)) {
-        const meta = metas[0];
+        // Re-tracks APPEND metas rather than replace — take the freshest.
+        const meta = metas.at(-1);
         if (!meta?.roomId) {
           continue;
         }
