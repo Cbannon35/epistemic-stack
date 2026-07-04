@@ -1,11 +1,13 @@
 "use client";
 
 import { useReactFlow, useStoreApi } from "@xyflow/react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   type CursorRefs,
   RemoteCursor,
 } from "@/app/_components/presence/cursor";
+import { TourPill } from "@/app/_components/presence/tour-pill";
+import { type EveDriver, useTour } from "@/app/_components/presence/use-tour";
 import { useRoom } from "@/app/_components/room-provider";
 import { EVE_COLOR } from "@/lib/realtime/color";
 import { EVE_CURSOR_ID } from "@/lib/realtime/types";
@@ -25,6 +27,8 @@ type Remote = {
   hasPos: boolean;
   lastTs: number;
   chatTs: number;
+  /** Pin cursor + bubble visible regardless of timers (eve mid-narration). */
+  hold: boolean;
   /** Damping time constant (ms) — eve glides slower than a human hand. */
   tau: number;
   el: HTMLDivElement | null;
@@ -35,13 +39,9 @@ type Remote = {
 // renders the LIST of peers (presence changes); every per-frame position runs
 // through refs + one rAF loop writing transforms directly, with the viewport
 // transform read inside the loop — pointer movement and pan/zoom cause zero
-// React re-renders. The `/` cursor chat input also lives here, riding the own
-// pointer in pane coordinates.
-export function CursorLayer({
-  onAskEve,
-}: {
-  onAskEve?: (question: string) => void;
-}) {
+// React re-renders. The `/` cursor chat input rides the own pointer, and the
+// eve tour cursor is one more entry in the same registry.
+export function CursorLayer() {
   const { channel, me } = useRoom();
   const rf = useReactFlow();
   const storeApi = useStoreApi();
@@ -66,6 +66,7 @@ export function CursorLayer({
         hasPos: false,
         lastTs: 0,
         chatTs: 0,
+        hold: false,
         tau: id === EVE_CURSOR_ID ? 250 : 60,
         el: null,
         bubble: null,
@@ -74,6 +75,42 @@ export function CursorLayer({
     }
     return remote;
   }, []);
+
+  // The eve tour cursor is driven imperatively through the same registry.
+  const eveDriver = useMemo<EveDriver>(
+    () => ({
+      move: (x, y, opts) => {
+        const eve = ensureRemote(EVE_CURSOR_ID);
+        eve.tx = x;
+        eve.ty = y;
+        if (opts?.instant || !eve.hasPos) {
+          eve.x = x;
+          eve.y = y;
+          eve.hasPos = true;
+        }
+        eve.hold = true;
+        eve.lastTs = performance.now();
+      },
+      say: (text) => {
+        const eve = ensureRemote(EVE_CURSOR_ID);
+        if (eve.bubble) {
+          eve.bubble.textContent = text;
+        }
+        eve.chatTs = performance.now();
+      },
+      hide: () => {
+        const eve = ensureRemote(EVE_CURSOR_ID);
+        eve.hold = false;
+        eve.lastTs = 0;
+        eve.chatTs = 0;
+      },
+    }),
+    [ensureRemote]
+  );
+
+  const tour = useTour(eveDriver);
+  const tourRef = useRef(tour);
+  tourRef.current = tour;
 
   const registerRefs = useCallback(
     (id: string, refs: Partial<CursorRefs>) => {
@@ -144,7 +181,10 @@ export function CursorLayer({
         if (!el) {
           continue;
         }
-        if (remote.lastTs === 0 || now - remote.lastTs > CURSOR_STALE_MS) {
+        const stale =
+          remote.lastTs === 0 ||
+          (now - remote.lastTs > CURSOR_STALE_MS && !remote.hold);
+        if (stale) {
           el.style.opacity = "0";
           continue;
         }
@@ -158,7 +198,8 @@ export function CursorLayer({
         if (remote.bubble) {
           remote.bubble.classList.toggle(
             "bubble-hidden",
-            remote.chatTs === 0 || now - remote.chatTs > BUBBLE_FADE_MS
+            !remote.hold &&
+              (remote.chatTs === 0 || now - remote.chatTs > BUBBLE_FADE_MS)
           );
         }
       }
@@ -258,11 +299,11 @@ export function CursorLayer({
 
   const commitChat = () => {
     const text = chatText.trim();
-    if (text.startsWith("@eve") && onAskEve) {
+    if (text.startsWith("@eve")) {
       const question = text.replace(/^@eve\s*/, "");
       closeChat(true);
       if (question) {
-        onAskEve(question);
+        tourRef.current.start(question);
       }
       return;
     }
@@ -277,11 +318,15 @@ export function CursorLayer({
     closeChat(!text);
   };
 
-  // ── '/' keybinding (with focus hygiene) ────────────────────────────────────
+  // ── '/' keybinding (with focus hygiene) + Escape stops a hosted tour ──────
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (chatOpen) {
         return; // The input's own handlers take over.
+      }
+      if (e.key === "Escape") {
+        tourRef.current.stop();
+        return;
       }
       if (
         e.key !== "/" ||
@@ -304,6 +349,26 @@ export function CursorLayer({
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [chatOpen, setActivity]);
+
+  // Any user-initiated pan/zoom while following the tour stops the camera sync
+  // (the tour's own setCenter animations don't fire these listeners).
+  const following = tour.phase.kind === "following";
+  useEffect(() => {
+    if (!following) {
+      return;
+    }
+    const pane = storeApi.getState().domNode;
+    if (!pane) {
+      return;
+    }
+    const stop = () => tourRef.current.unfollow();
+    pane.addEventListener("wheel", stop, { passive: true });
+    pane.addEventListener("pointerdown", stop);
+    return () => {
+      pane.removeEventListener("wheel", stop);
+      pane.removeEventListener("pointerdown", stop);
+    };
+  }, [following, storeApi]);
 
   useEffect(() => {
     if (chatOpen) {
@@ -333,6 +398,12 @@ export function CursorLayer({
         id={EVE_CURSOR_ID}
         key={EVE_CURSOR_ID}
         register={registerRefs}
+      />
+      <TourPill
+        onFollow={tour.follow}
+        onStop={tour.stop}
+        onUnfollow={tour.unfollow}
+        phase={tour.phase}
       />
       {chatOpen ? (
         <div
