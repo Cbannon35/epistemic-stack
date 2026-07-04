@@ -26,10 +26,10 @@ export function AvatarStack({
   const shown = people.slice(0, MAX_SHOWN);
   const overflow = people.length - shown.length;
   return (
-    <span className="fade-in -space-x-1.5 flex items-center">
+    <span className="fade-in -space-x-1 flex items-center">
       {shown.map((person) => (
         <span
-          className={`flex ${size} items-center justify-center rounded-full font-medium ${text} text-white ring-2 ring-background`}
+          className={`flex ${size} items-center justify-center rounded-full font-medium ${text} text-white`}
           key={person.userId}
           style={{ backgroundColor: person.color }}
           title={person.title ?? person.displayName}
@@ -39,7 +39,7 @@ export function AvatarStack({
       ))}
       {overflow > 0 ? (
         <span
-          className={`flex ${size} items-center justify-center rounded-full bg-muted font-medium ${text} text-muted-foreground ring-2 ring-background`}
+          className={`flex ${size} items-center justify-center rounded-full bg-muted font-medium ${text} text-muted-foreground`}
         >
           +{overflow}
         </span>
