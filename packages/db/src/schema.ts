@@ -1,0 +1,309 @@
+/**
+ * The Epistemic Commons — schema (the concrete protocol Sourbut's essay leaves abstract).
+ *
+ * Design invariants:
+ *  - APPEND-ONLY. Rows are never mutated or deleted. A correction is a NEW row whose
+ *    contribution `supersedes` a prior one. (Enforced at the DB level in a later migration
+ *    by revoking UPDATE/DELETE — the append-only guarantee is itself a "receipt".)
+ *  - CONTENT-ADDRESSED. Claims/sources are keyed by a hash of their normalized content, so
+ *    the same claim from ten sources resolves to ONE node — this is what makes coverage
+ *    countable and compounding real.
+ *  - RECEIPTS. Every node/edge is created by a `contribution` (who/when/what-method/hash/sig).
+ *  - LATE-BINDING TRUST. We never store "the answer". Credence lives in `assessments`
+ *    (attributed to a contributor + method) and is resolved at query time through a `lens`.
+ *
+ * Layer map:  ingestion → sources, claims, mentions   |   structure → relations, hypotheses,
+ * cruxes   |   assessment → assessments, lenses (resolved late, at read time).
+ */
+import { sql } from 'drizzle-orm'
+import {
+  doublePrecision,
+  index,
+  integer,
+  jsonb,
+  pgEnum,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+  vector,
+} from 'drizzle-orm/pg-core'
+
+// Embedding dimension for local gte-small (Transformers.js). Changing model ⇒ re-embed migration.
+export const EMBEDDING_DIM = 384
+
+// ── enums ────────────────────────────────────────────────────────────────────
+export const contributorKind = pgEnum('contributor_kind', ['human', 'agent'])
+export const assertionForm = pgEnum('assertion_form', [
+  'observational',
+  'causal',
+  'evaluative',
+  'predictive',
+  'definitional',
+])
+export const modality = pgEnum('modality', ['states', 'suggests', 'speculates', 'refutes'])
+export const relationType = pgEnum('relation_type', [
+  'supports',
+  'contradicts',
+  'depends_on',
+  'duplicates',
+  'refines',
+])
+export const assessmentKind = pgEnum('assessment_kind', ['endorse', 'challenge', 'credence'])
+export const cruxStatus = pgEnum('crux_status', [
+  'open',
+  'searching',
+  'searched_unfound',
+  'answered',
+])
+export const hypothesisStatus = pgEnum('hypothesis_status', ['active', 'merged', 'dropped'])
+
+// ── identity ─────────────────────────────────────────────────────────────────
+export const contributors = pgTable('contributors', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  kind: contributorKind('kind').notNull(),
+  displayName: text('display_name').notNull(),
+  publicKey: text('public_key'), // for signature verification (staked-reputation / crypto guarantee)
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+})
+
+// ── the append-only receipt ledger ───────────────────────────────────────────
+// One row per write action. Every node/edge below points back to the contribution
+// that created it. `supersedes` chains corrections without mutating history.
+export const contributions = pgTable(
+  'contributions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    contributorId: uuid('contributor_id')
+      .notNull()
+      .references(() => contributors.id),
+    method: text('method').notNull(), // e.g. "claim-pressure-test@1.2" — the skill + version used
+    payloadHash: text('payload_hash').notNull(), // content hash of what was asserted
+    signature: text('signature'), // optional signature over payloadHash by the contributor key
+    supersedes: uuid('supersedes'), // prior contribution this replaces (self-ref, nullable)
+    sessionId: text('session_id'), // the eve session (= investigation) that produced this write
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index('contributions_contributor_idx').on(t.contributorId),
+    index('contributions_session_idx').on(t.sessionId),
+  ],
+)
+
+// ── investigations ───────────────────────────────────────────────────────────
+// One row per investigation, keyed by the eve session id. Powers the persistent
+// sidebar history + resume; the saved session snapshot lets a past chat reopen.
+// Scoping the graph to an investigation = contributions whose session_id matches;
+// the shared commons still dedups/compounds across investigations underneath.
+export const investigations = pgTable(
+  'investigations',
+  {
+    id: text('id').primaryKey(), // the eve session id
+    contributorId: uuid('contributor_id')
+      .notNull()
+      .references(() => contributors.id),
+    title: text('title').notNull(), // the question
+    sessionState: jsonb('session_state'), // eve resume cursor (initialSession)
+    events: jsonb('events'), // eve event stream (initialEvents) for transcript replay
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('investigations_contributor_idx').on(t.contributorId)],
+)
+
+// ── investigation roots ──────────────────────────────────────────────────────
+export const questions = pgTable('questions', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  text: text('text').notNull(),
+  operationalized: text('operationalized'), // the pinned-down version (workflow step 0)
+  contributionId: uuid('contribution_id')
+    .notNull()
+    .references(() => contributions.id),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+})
+
+// ── INGESTION ────────────────────────────────────────────────────────────────
+export const sources = pgTable(
+  'sources',
+  {
+    id: text('id').primaryKey(), // content hash of the stored source text (content-addressed)
+    stableId: text('stable_id'), // doi:… / isbn:… / url — a durable external identifier
+    url: text('url'),
+    title: text('title'),
+    author: text('author'),
+    publisher: text('publisher'),
+    publishedDate: text('published_date'), // kept as text; sources vary (year-only, etc.)
+    guarantees: jsonb('guarantees'), // { peer_reviewed: bool, preprint: bool, … } — toward assessment
+    retrieval: jsonb('retrieval'), // { operator, round, retriever, query } — the retrieval receipt
+    contributionId: uuid('contribution_id')
+      .notNull()
+      .references(() => contributions.id),
+  },
+  (t) => [index('sources_stable_id_idx').on(t.stableId)],
+)
+
+export const claims = pgTable(
+  'claims',
+  {
+    // canonical_id = hash of the representative normalized text (a stable, content-addressed id).
+    // DEDUP is decided at write time by EMBEDDING similarity: a new candidate is embedded and
+    // compared to existing claims; if cosine to the nearest clears the threshold it resolves to
+    // that canonical_id (attach a mention), otherwise it becomes a new claim. This is how
+    // "ten sources, one claim" survives paraphrase.
+    canonicalId: text('canonical_id').primaryKey(),
+    text: text('text').notNull(), // the canonical surface form
+    normalizedText: text('normalized_text').notNull(), // what the id hash is taken over
+    embedding: vector('embedding', { dimensions: EMBEDDING_DIM }), // gte-small (384d) for dedup
+    assertionForm: assertionForm('assertion_form'),
+    modality: modality('modality'), // hedging: states vs suggests vs speculates (rhetorical weight)
+    descriptors: jsonb('descriptors'), // { discipline, position, evidence_type, era, geography }
+    contributionId: uuid('contribution_id')
+      .notNull()
+      .references(() => contributions.id),
+  },
+  (t) => [
+    uniqueIndex('claims_normalized_idx').on(t.normalizedText),
+    // HNSW cosine index over embeddings powers the nearest-claim lookup during dedup.
+    index('claims_embedding_idx').using('hnsw', t.embedding.op('vector_cosine_ops')),
+  ],
+)
+
+// Claim↔Source at a verbatim span: the receipt that the source ACTUALLY says the claim.
+export const mentions = pgTable(
+  'mentions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    claimId: text('claim_id')
+      .notNull()
+      .references(() => claims.canonicalId),
+    sourceId: text('source_id')
+      .notNull()
+      .references(() => sources.id),
+    spanStart: integer('span_start'),
+    spanEnd: integer('span_end'),
+    quote: text('quote').notNull(), // verbatim substring supporting the extraction
+    contributionId: uuid('contribution_id')
+      .notNull()
+      .references(() => contributions.id),
+  },
+  (t) => [index('mentions_claim_idx').on(t.claimId), index('mentions_source_idx').on(t.sourceId)],
+)
+
+// ── STRUCTURE ────────────────────────────────────────────────────────────────
+// Typed inter-claim edge. Itself a contribution, so relations are challengeable too.
+export const relations = pgTable(
+  'relations',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    fromClaimId: text('from_claim_id')
+      .notNull()
+      .references(() => claims.canonicalId),
+    toClaimId: text('to_claim_id')
+      .notNull()
+      .references(() => claims.canonicalId),
+    type: relationType('type').notNull(),
+    rationale: text('rationale'),
+    contributionId: uuid('contribution_id')
+      .notNull()
+      .references(() => contributions.id),
+  },
+  (t) => [index('relations_from_idx').on(t.fromClaimId), index('relations_to_idx').on(t.toClaimId)],
+)
+
+// Competing explanations (discourse structure). credence is NOT stored here — see assessments.
+export const hypotheses = pgTable('hypotheses', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  questionId: uuid('question_id').references(() => questions.id), // optional
+  sessionId: text('session_id'), // the eve session (= investigation) this belongs to
+  statement: text('statement').notNull(),
+  answerBearing: text('answer_bearing'), // e.g. "yes" | "no" — which way it answers the question
+  status: hypothesisStatus('status').notNull().default('active'),
+  contributionId: uuid('contribution_id')
+    .notNull()
+    .references(() => contributions.id),
+})
+
+// Claim ↔ hypothesis: does this claim support or undermine the explanation, and how much
+// does it discriminate it from the rivals (diagnosticity)? Lets claims cluster under the
+// competing answers in the graph.
+export const hypothesisLinks = pgTable(
+  'hypothesis_links',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    hypothesisId: uuid('hypothesis_id')
+      .notNull()
+      .references(() => hypotheses.id),
+    claimId: text('claim_id')
+      .notNull()
+      .references(() => claims.canonicalId),
+    polarity: text('polarity').notNull(), // 'supports' | 'undermines'
+    diagnosticity: doublePrecision('diagnosticity'), // 0..1: how much it discriminates
+    contributionId: uuid('contribution_id')
+      .notNull()
+      .references(() => contributions.id),
+  },
+  (t) => [
+    index('hyplinks_hyp_idx').on(t.hypothesisId),
+    index('hyplinks_claim_idx').on(t.claimId),
+  ]
+)
+
+// "What would change our mind?" — an unanswered crux on a load-bearing claim is itself a finding.
+export const cruxes = pgTable('cruxes', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  claimId: text('claim_id').references(() => claims.canonicalId),
+  hypothesisId: uuid('hypothesis_id').references(() => hypotheses.id),
+  question: text('question').notNull(),
+  implication: text('implication'), // what a yes/no would do to the picture
+  status: cruxStatus('status').notNull().default('open'),
+  answeredByClaimId: text('answered_by_claim_id').references(() => claims.canonicalId),
+  voiEstimate: doublePrecision('voi_estimate'), // value-of-information: could it change the answer?
+  contributionId: uuid('contribution_id')
+    .notNull()
+    .references(() => contributions.id),
+})
+
+// ── ASSESSMENT (late-binding) ────────────────────────────────────────────────
+// An attributed judgment. Consumers pick WHOSE assessments to weight (via a lens);
+// the commons stores the inputs, never "the" credence.
+export const assessments = pgTable(
+  'assessments',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    assessorId: uuid('assessor_id')
+      .notNull()
+      .references(() => contributors.id),
+    kind: assessmentKind('kind').notNull(),
+    // exactly one target is set (claim / relation / hypothesis)
+    claimId: text('claim_id').references(() => claims.canonicalId),
+    relationId: uuid('relation_id').references(() => relations.id),
+    hypothesisId: uuid('hypothesis_id').references(() => hypotheses.id),
+    credence: doublePrecision('credence'), // 0..1, only for kind = 'credence'
+    method: text('method'), // how this assessment was reached (a skill@version)
+    stake: doublePrecision('stake'), // optional reputation/economic stake behind it
+    rationale: text('rationale'),
+    contributionId: uuid('contribution_id')
+      .notNull()
+      .references(() => contributions.id),
+  },
+  (t) => [
+    index('assessments_claim_idx').on(t.claimId),
+    index('assessments_assessor_idx').on(t.assessorId),
+  ],
+)
+
+// A lens = a saved perspective for resolving trust at read time: whose assessments to weight,
+// what priors, what independence assumptions. This is what turns the same graph into different
+// posteriors (and reproduces the COVID debate's 23-orders-of-magnitude spread).
+export const lenses = pgTable('lenses', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  name: text('name').notNull(),
+  description: text('description'),
+  // { weights: {contributorId|method: number}, priors: {hypothesisId: number},
+  //   independence: 'naive'|'clustered', … } — interpreted by the query layer.
+  config: jsonb('config').notNull().default(sql`'{}'::jsonb`),
+  contributionId: uuid('contribution_id')
+    .notNull()
+    .references(() => contributions.id),
+})

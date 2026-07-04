@@ -1,0 +1,13 @@
+node_modules/
+dist/
+.env
+.env.*
+!.env.example
+*.log
+*.tsbuildinfo
+.DS_Store
+.next/
+out/
+supabase/.branches/
+supabase/.temp/
+.eve/

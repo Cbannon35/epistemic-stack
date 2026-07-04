@@ -1,0 +1,20 @@
+{
+  "name": "epistemic-stack",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "check": "biome check .",
+    "check:fix": "biome check --write .",
+    "db:generate": "bun --filter @epistack/db generate",
+    "db:migrate": "bun --filter @epistack/db migrate"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.0.0",
+    "@types/bun": "^1.3.14",
+    "typescript": "^5.6.0"
+  }
+}
