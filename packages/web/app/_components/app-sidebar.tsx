@@ -122,7 +122,7 @@ export function AppSidebar({
                         </span>
                         <AvatarStack
                           people={(room.lobby.get(inv.id) ?? []).map((p) => ({
-                            clientId: p.clientId,
+                            userId: p.userId,
                             displayName: p.displayName,
                             color: p.color,
                           }))}

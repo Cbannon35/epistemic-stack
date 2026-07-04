@@ -4,6 +4,7 @@ import type { RealtimeChannel } from "@supabase/supabase-js";
 import { useEffect, useRef, useState } from "react";
 import { colorForUser } from "@/lib/realtime/color";
 import {
+  dedupeByUser,
   LOBBY_TOPIC,
   type LobbyMeta,
   type RealtimeIdentity,
@@ -23,6 +24,7 @@ export function useLobbyPresence(
   const channelRef = useRef<RealtimeChannel | null>(null);
   const roomIdRef = useRef(roomId);
   roomIdRef.current = roomId;
+  const joinedAtRef = useRef(Date.now());
 
   const clientId = identity?.clientId ?? null;
   const userId = identity?.userId ?? null;
@@ -49,8 +51,9 @@ export function useLobbyPresence(
         list.push(meta);
         next.set(meta.roomId, list);
       }
-      for (const list of next.values()) {
-        list.sort((a, b) => a.joinedAt - b.joinedAt);
+      // One avatar per PERSON per room, however many tabs they have open.
+      for (const [key, list] of next) {
+        next.set(key, dedupeByUser(list));
       }
       setByRoom(next);
     });
@@ -60,9 +63,10 @@ export function useLobbyPresence(
           clientId,
           userId,
           displayName,
-          color: colorForUser(clientId),
+          color: colorForUser(userId),
           roomId: roomIdRef.current,
-          joinedAt: Date.now(),
+          joinedAt: joinedAtRef.current,
+          updatedAt: Date.now(),
         } satisfies LobbyMeta);
       }
     });
@@ -81,9 +85,10 @@ export function useLobbyPresence(
         clientId,
         userId,
         displayName,
-        color: colorForUser(clientId),
+        color: colorForUser(userId),
         roomId,
-        joinedAt: Date.now(),
+        joinedAt: joinedAtRef.current,
+        updatedAt: Date.now(),
       } satisfies LobbyMeta);
     }
   }, [roomId, clientId, userId, displayName]);

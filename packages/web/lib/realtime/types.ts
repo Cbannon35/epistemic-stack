@@ -2,9 +2,15 @@
 // Presence carries who's here; broadcast carries everything that moves:
 // cursors, cursor chat, the eve tour, and turn coordination for the chat.
 
-// Identity on the realtime channel is PER TAB (clientId), not per auth user:
-// the same account in two windows is two participants with two live cursors.
+// Identity is split two ways:
+//  - CONNECTIONS (clientId, one per tab, sessionStorage-stable across
+//    refreshes) key everything pointer-shaped: presence entries, cursors,
+//    cursor chat, tour hosting. A pointer exists per window.
+//  - PEOPLE (userId) are what avatars display: avatar stacks DEDUPE presence
+//    by userId (freshest meta wins), and colors derive from userId so a
+//    person looks the same everywhere, however many tabs they have open.
 export type RealtimeIdentity = {
+  /** Per-tab connection id — see lib/realtime/client-id.ts. */
   clientId: string;
   userId: string;
   displayName: string;
@@ -18,7 +24,10 @@ export type PresenceMeta = {
   activity: "viewing" | "chatting" | "touring";
   /** Which pane this member's pointer is over — avatars follow it. */
   view: "chat" | "graph";
+  /** Stable per connection — avatar sort order. */
   joinedAt: number;
+  /** Bumped on every re-track — freshest-meta dedup. */
+  updatedAt: number;
 };
 
 /** App-wide presence (one "lobby" channel): who is in which room right now. */
@@ -29,9 +38,24 @@ export type LobbyMeta = {
   color: string;
   roomId: string | null;
   joinedAt: number;
+  updatedAt: number;
 };
 
 export const LOBBY_TOPIC = "lobby";
+
+/** One entry per PERSON: freshest meta per userId, ordered by join time. */
+export function dedupeByUser<
+  T extends { userId: string; joinedAt: number; updatedAt: number },
+>(metas: Iterable<T>): T[] {
+  const byUser = new Map<string, T>();
+  for (const meta of metas) {
+    const existing = byUser.get(meta.userId);
+    if (!existing || meta.updatedAt > existing.updatedAt) {
+      byUser.set(meta.userId, meta);
+    }
+  }
+  return [...byUser.values()].sort((a, b) => a.joinedAt - b.joinedAt);
+}
 
 /** Broadcast "cursor" — pointer position in FLOW coordinates (throttled). */
 export type CursorEvent =

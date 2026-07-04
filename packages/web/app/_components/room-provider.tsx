@@ -82,7 +82,7 @@ export function RoomProvider({
     store.getSnapshot
   );
 
-  // Realtime identity is per tab: two windows of one account are two cursors.
+  // Cursors are per tab (clientId); avatars dedupe by person (userId).
   const identity: RealtimeIdentity = {
     clientId: getClientId(),
     userId: me.userId,

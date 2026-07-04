@@ -14,7 +14,7 @@ import {
 import { createClient } from "@/lib/supabase/client";
 
 export type RoomChannel = {
-  /** Everyone present, keyed by clientId (self included). */
+  /** Everyone present, one entry per CONNECTION, keyed by clientId. */
   peers: ReadonlyMap<string, PresenceMeta>;
   send: <E extends RoomEventName>(
     event: E,
@@ -47,6 +47,7 @@ export function useRoomChannel(
   const handlersRef = useRef(new Map<RoomEventName, Set<Handler>>());
   const activityRef = useRef<PresenceMeta["activity"]>("viewing");
   const viewRef = useRef<PresenceMeta["view"]>("chat");
+  const joinedAtRef = useRef(Date.now());
   const identityRef = useRef(identity);
   identityRef.current = identity;
 
@@ -62,10 +63,12 @@ export function useRoomChannel(
         clientId: id.clientId,
         userId: id.userId,
         displayName: id.displayName,
-        color: colorForUser(id.clientId),
+        // Color follows the PERSON, matching their avatar everywhere.
+        color: colorForUser(id.userId),
         activity: activityRef.current,
         view: viewRef.current,
-        joinedAt: Date.now(),
+        joinedAt: joinedAtRef.current,
+        updatedAt: Date.now(),
       } satisfies PresenceMeta);
     }
   }, []);
@@ -78,7 +81,7 @@ export function useRoomChannel(
     const supabase = createClient();
     const channel = supabase.channel(roomTopic(roomId), {
       config: {
-        // Keyed per TAB: two windows of one account are two participants.
+        // One presence per CONNECTION; avatar stacks dedupe by userId.
         presence: { key: clientId },
         broadcast: { self: false, ack: false },
       },
