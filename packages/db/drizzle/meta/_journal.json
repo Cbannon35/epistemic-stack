@@ -22,6 +22,20 @@
       "when": 1783147706823,
       "tag": "0002_breezy_fat_cobra",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1783156776845,
+      "tag": "0003_nasty_korvac",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1783156785175,
+      "tag": "0004_realtime_publication",
+      "breakpoints": true
     }
   ]
 }

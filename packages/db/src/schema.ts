@@ -17,12 +17,14 @@
  */
 import { sql } from 'drizzle-orm'
 import {
+  type AnyPgColumn,
   doublePrecision,
   index,
   integer,
   jsonb,
   pgEnum,
   pgTable,
+  primaryKey,
   text,
   timestamp,
   uniqueIndex,
@@ -106,10 +108,36 @@ export const investigations = pgTable(
     title: text('title').notNull(), // the question
     sessionState: jsonb('session_state'), // eve resume cursor (initialSession)
     events: jsonb('events'), // eve event stream (initialEvents) for transcript replay
+    // Lineage: set when this investigation was forked from another. The fork
+    // adopts the ancestor chain's graph scope, so it STARTS FROM the parent's
+    // claims — compounding, made navigable.
+    forkedFrom: text('forked_from').references((): AnyPgColumn => investigations.id),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index('investigations_contributor_idx').on(t.contributorId)],
+)
+
+// Who sent each user turn in a shared investigation. eve sessions have a single
+// auth principal, so per-message authorship lives here: one row per (session, turn),
+// written by the sender's client after the turn is accepted. Composite PK makes
+// concurrent inserts safe via onConflictDoNothing.
+export const investigationTurns = pgTable(
+  'investigation_turns',
+  {
+    sessionId: text('session_id')
+      .notNull()
+      .references(() => investigations.id),
+    turnId: text('turn_id').notNull(),
+    contributorId: uuid('contributor_id')
+      .notNull()
+      .references(() => contributors.id),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.sessionId, t.turnId] }),
+    index('inv_turns_session_idx').on(t.sessionId),
+  ],
 )
 
 // ── investigation roots ──────────────────────────────────────────────────────
@@ -243,10 +271,7 @@ export const hypothesisLinks = pgTable(
       .notNull()
       .references(() => contributions.id),
   },
-  (t) => [
-    index('hyplinks_hyp_idx').on(t.hypothesisId),
-    index('hyplinks_claim_idx').on(t.claimId),
-  ]
+  (t) => [index('hyplinks_hyp_idx').on(t.hypothesisId), index('hyplinks_claim_idx').on(t.claimId)],
 )
 
 // "What would change our mind?" — an unanswered crux on a load-bearing claim is itself a finding.
