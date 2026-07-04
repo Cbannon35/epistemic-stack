@@ -14,7 +14,7 @@ import {
 import { createClient } from "@/lib/supabase/client";
 
 export type RoomChannel = {
-  /** Everyone present, keyed by userId (self included). */
+  /** Everyone present, keyed by clientId (self included). */
   peers: ReadonlyMap<string, PresenceMeta>;
   send: <E extends RoomEventName>(
     event: E,
@@ -26,6 +26,8 @@ export type RoomChannel = {
     handler: (payload: RoomEventPayloads[E]) => void
   ) => () => void;
   setActivity: (activity: PresenceMeta["activity"]) => void;
+  /** Which pane this member is looking at — avatars follow it. */
+  setView: (view: PresenceMeta["view"]) => void;
 };
 
 type Handler = (payload: unknown) => void;
@@ -44,12 +46,29 @@ export function useRoomChannel(
   const channelRef = useRef<RealtimeChannel | null>(null);
   const handlersRef = useRef(new Map<RoomEventName, Set<Handler>>());
   const activityRef = useRef<PresenceMeta["activity"]>("viewing");
+  const viewRef = useRef<PresenceMeta["view"]>("chat");
   const identityRef = useRef(identity);
   identityRef.current = identity;
 
   const clientId = identity?.clientId ?? null;
   const userId = identity?.userId ?? null;
   const displayName = identity?.displayName ?? null;
+
+  const trackSelf = useCallback(() => {
+    const id = identityRef.current;
+    const channel = channelRef.current;
+    if (channel && id) {
+      channel.track({
+        clientId: id.clientId,
+        userId: id.userId,
+        displayName: id.displayName,
+        color: colorForUser(id.clientId),
+        activity: activityRef.current,
+        view: viewRef.current,
+        joinedAt: Date.now(),
+      } satisfies PresenceMeta);
+    }
+  }, []);
 
   useEffect(() => {
     if (!(roomId && clientId && userId && displayName)) {
@@ -87,14 +106,7 @@ export function useRoomChannel(
     channel.subscribe((status) => {
       // Re-track on every (re)join so presence survives reconnects.
       if (status === "SUBSCRIBED") {
-        channel.track({
-          clientId,
-          userId,
-          displayName,
-          color: colorForUser(clientId),
-          activity: activityRef.current,
-          joinedAt: Date.now(),
-        } satisfies PresenceMeta);
+        trackSelf();
       }
     });
     channelRef.current = channel;
@@ -102,7 +114,7 @@ export function useRoomChannel(
       channelRef.current = null;
       supabase.removeChannel(channel);
     };
-  }, [roomId, clientId, userId, displayName]);
+  }, [roomId, clientId, userId, displayName, trackSelf]);
 
   const send = useCallback(
     <E extends RoomEventName>(event: E, payload: RoomEventPayloads[E]) => {
@@ -129,21 +141,24 @@ export function useRoomChannel(
     []
   );
 
-  const setActivity = useCallback((activity: PresenceMeta["activity"]) => {
-    activityRef.current = activity;
-    const id = identityRef.current;
-    const channel = channelRef.current;
-    if (channel && id) {
-      channel.track({
-        clientId: id.clientId,
-        userId: id.userId,
-        displayName: id.displayName,
-        color: colorForUser(id.clientId),
-        activity,
-        joinedAt: Date.now(),
-      } satisfies PresenceMeta);
-    }
-  }, []);
+  const setActivity = useCallback(
+    (activity: PresenceMeta["activity"]) => {
+      activityRef.current = activity;
+      trackSelf();
+    },
+    [trackSelf]
+  );
 
-  return { peers, send, on, setActivity };
+  const setView = useCallback(
+    (view: PresenceMeta["view"]) => {
+      if (viewRef.current === view) {
+        return;
+      }
+      viewRef.current = view;
+      trackSelf();
+    },
+    [trackSelf]
+  );
+
+  return { peers, send, on, setActivity, setView };
 }

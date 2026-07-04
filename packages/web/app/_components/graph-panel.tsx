@@ -350,7 +350,7 @@ export function GraphPanel({ onClose }: { onClose?: () => void }) {
           </button>
         </div>
         <span className="flex items-center gap-3 text-muted-foreground text-xs">
-          <PresenceAvatars />
+          <PresenceAvatars view="graph" />
           {counts ? (
             <span className="hidden sm:inline">
               {counts.hypotheses} hyp · {counts.claims} claims ·{" "}

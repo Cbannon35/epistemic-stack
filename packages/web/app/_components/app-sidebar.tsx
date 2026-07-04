@@ -4,6 +4,7 @@ import { GitForkIcon, LogOutIcon, PlusIcon, SearchIcon } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useNav } from "@/app/_components/nav-context";
+import { AvatarStack } from "@/app/_components/presence/presence-avatars";
 import { useRoom } from "@/app/_components/room-provider";
 import { signOut } from "@/app/(auth)/actions";
 import {
@@ -117,6 +118,15 @@ export function AppSidebar({
                             {inv.forkedFrom ? " · fork" : ""}
                           </span>
                         </span>
+                        <AvatarStack
+                          people={(room.lobby.get(inv.id) ?? []).map((p) => ({
+                            clientId: p.clientId,
+                            displayName: p.displayName,
+                            color: p.color,
+                          }))}
+                          size="size-4"
+                          text="text-[8px]"
+                        />
                       </Link>
                     </SidebarMenuButton>
                   </SidebarMenuItem>

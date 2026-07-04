@@ -5,6 +5,7 @@ import { GitForkIcon, SearchIcon } from "lucide-react";
 import { useRouter } from "next/navigation";
 import type { FormEvent, ReactNode } from "react";
 import { MessagePart } from "@/app/_components/chat/message-parts";
+import { PresenceAvatars } from "@/app/_components/presence/presence-avatars";
 import { useRoom } from "@/app/_components/room-provider";
 import {
   Conversation,
@@ -66,6 +67,7 @@ export function AgentChat({ headerActions }: { headerActions?: ReactNode }) {
           </span>
         ) : null}
         <span className="ml-auto flex items-center gap-2">
+          <PresenceAvatars view="chat" />
           {room.session.sessionId ? (
             <button
               className="inline-flex items-center gap-1.5 rounded-md border border-border/60 px-2 py-1 text-muted-foreground text-xs transition-[background-color,border-color,color,transform] duration-150 hover:bg-muted hover:text-foreground active:scale-[0.97] active:bg-muted"

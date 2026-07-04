@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { AgentChat } from "@/app/_components/agent-chat";
 import { graphBus } from "@/app/_components/graph/graph-bus";
 import { GraphPanel } from "@/app/_components/graph-panel";
+import { useRoom } from "@/app/_components/room-provider";
 
 const MIN_CHAT_PX = 380;
 const MIN_GRAPH_PX = 340;
@@ -21,9 +22,19 @@ export function Workspace() {
   // Graph share of the split, in percent — stays proportional on window resize.
   const [graphPct, setGraphPct] = useState(DEFAULT_GRAPH_PCT);
   const [dragging, setDragging] = useState(false);
+  const { channel } = useRoom();
+  const { setView } = channel;
 
   // Clicking a tool card in the chat always reveals the graph it points into.
   useEffect(() => graphBus.on("focusNode", () => setGraphOpen(true)), []);
+
+  // Your avatar follows your pointer between panes (chat header ↔ graph
+  // toolbar). Closing the graph puts you back in chat.
+  useEffect(() => {
+    if (!graphOpen) {
+      setView("chat");
+    }
+  }, [graphOpen, setView]);
 
   // Clamp so neither pane collapses below its usable minimum.
   const clampPct = (pct: number) => {
@@ -132,6 +143,8 @@ export function Workspace() {
         className={`hidden h-full min-w-0 overflow-hidden md:block ${
           dragging ? "" : "transition-[width] duration-200 ease-out"
         }`}
+        onPointerEnter={() => setView("graph")}
+        onPointerLeave={() => setView("chat")}
         ref={graphRef}
         style={{ width: graphOpen ? `${graphPct}%` : "0%" }}
       >

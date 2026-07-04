@@ -11,9 +11,14 @@ import {
 } from "react";
 import type { InvestigationRoom } from "@/app/(chat)/actions";
 import { getForkSeed } from "@/app/(chat)/actions";
+import { useLobbyPresence } from "@/hooks/use-lobby-presence";
 import { type RoomChannel, useRoomChannel } from "@/hooks/use-room-channel";
 import { getClientId } from "@/lib/realtime/client-id";
-import type { RealtimeIdentity, RoomEventPayloads } from "@/lib/realtime/types";
+import type {
+  LobbyMeta,
+  RealtimeIdentity,
+  RoomEventPayloads,
+} from "@/lib/realtime/types";
 import {
   type RoomIdentity,
   type RoomSnapshot,
@@ -33,6 +38,8 @@ export type RoomValue = RoomSnapshot & {
   forkFrom: string | null;
   store: RoomStore;
   channel: RoomChannel;
+  /** App-wide: who is in which room (sidebar at-a-glance avatars). */
+  lobby: ReadonlyMap<string, LobbyMeta[]>;
 };
 
 const RoomContext = createContext<RoomValue | null>(null);
@@ -86,6 +93,7 @@ export function RoomProvider({
   // presence, cursors — once its first send assigns an id).
   const liveRoomId = snapshot.session.sessionId ?? roomId;
   const channel = useRoomChannel(liveRoomId, identity);
+  const lobby = useLobbyPresence(liveRoomId, identity);
 
   const { send: channelSend, on: channelOn } = channel;
 
@@ -124,6 +132,7 @@ export function RoomProvider({
     forkFrom,
     store,
     channel,
+    lobby,
   };
 
   return <RoomContext.Provider value={value}>{children}</RoomContext.Provider>;

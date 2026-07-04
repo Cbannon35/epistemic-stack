@@ -16,8 +16,22 @@ export type PresenceMeta = {
   displayName: string;
   color: string;
   activity: "viewing" | "chatting" | "touring";
+  /** Which pane this member's pointer is over — avatars follow it. */
+  view: "chat" | "graph";
   joinedAt: number;
 };
+
+/** App-wide presence (one "lobby" channel): who is in which room right now. */
+export type LobbyMeta = {
+  clientId: string;
+  userId: string;
+  displayName: string;
+  color: string;
+  roomId: string | null;
+  joinedAt: number;
+};
+
+export const LOBBY_TOPIC = "lobby";
 
 /** Broadcast "cursor" — pointer position in FLOW coordinates (throttled). */
 export type CursorEvent =
