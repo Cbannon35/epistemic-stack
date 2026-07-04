@@ -1,8 +1,7 @@
-import { anthropic } from "@ai-sdk/anthropic";
-import { openai } from "@ai-sdk/openai";
 import { generateObject } from "ai";
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { selectEveModel } from "@/lib/eve-model";
 import { buildGraphData, type GraphNodeData } from "@/lib/graph-data";
 import { createClient } from "@/lib/supabase/server";
 
@@ -48,14 +47,6 @@ const eveSchema = z.object({
       "mode=tour: 1-2 sentences wrapping up. mode=answer: empty string."
     ),
 });
-
-// Prefer Anthropic when the key is present — same policy as the eve agent.
-function selectModel() {
-  if (process.env.ANTHROPIC_API_KEY) {
-    return anthropic("claude-haiku-4-5");
-  }
-  return openai("gpt-5-mini");
-}
 
 // Sources get trimmed first when the graph is large: tours are about the
 // argument structure (hypotheses, claims, cruxes), not the bibliography.
@@ -106,7 +97,7 @@ export async function POST(request: Request) {
     .join("\n");
 
   const { object } = await generateObject({
-    model: selectModel(),
+    model: selectEveModel(),
     schema: eveSchema,
     prompt: [
       "You are eve, a research guide embedded in a live argument map (an epistemic claim graph) that a team is exploring together.",

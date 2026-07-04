@@ -104,6 +104,9 @@ export type TourEndEvent = {
   ts: number;
 };
 
+/** Broadcast "comments:changed" — a comment was added/updated; refetch. */
+export type CommentsChangedEvent = { sessionId: string };
+
 /** Broadcast "turn:pending" — a member's send was accepted; nudge readers. */
 export type TurnPendingEvent = { displayName: string };
 
@@ -122,6 +125,7 @@ export type RoomEventPayloads = {
   "tour-end": TourEndEvent;
   "turn:pending": TurnPendingEvent;
   "turn:author": TurnAuthorEvent;
+  "comments:changed": CommentsChangedEvent;
 };
 
 export type RoomEventName = keyof RoomEventPayloads;
@@ -134,6 +138,7 @@ export const ROOM_EVENTS: readonly RoomEventName[] = [
   "tour-end",
   "turn:pending",
   "turn:author",
+  "comments:changed",
 ];
 
 export const roomTopic = (roomId: string) => `room:${roomId}`;

@@ -15,6 +15,10 @@ import {
   recordTurnAuthor,
   saveInvestigation,
 } from "@/app/(chat)/actions";
+import {
+  getQueuedCommentContext,
+  markCommentsConsumed,
+} from "@/app/(chat)/comment-actions";
 import type { TurnAuthor } from "@/lib/investigations";
 
 // Multiplayer chat store. eve's durable session stream is the single source of
@@ -45,7 +49,7 @@ export type RoomSnapshot = {
 
 export type RoomBus = {
   publish: (
-    event: "turn:pending" | "turn:author",
+    event: "turn:pending" | "turn:author" | "comments:changed",
     payload: Record<string, unknown>
   ) => void;
 };
@@ -101,6 +105,9 @@ export class RoomStore {
   #sentPending = false;
   // The token our in-flight turn was sent with (persisted at the boundary).
   #sentToken: string | undefined;
+  // Comment threads riding our in-flight turn (one-shot context injection);
+  // marked consumed once the turn is accepted.
+  #pendingCommentIds: string[] = [];
 
   readonly #listeners = new Set<() => void>();
   #snapshot: RoomSnapshot;
@@ -181,29 +188,42 @@ export class RoomStore {
       const isFirst = this.#sessionId === undefined;
       let state: SessionState;
       let forkSeed: string | undefined;
+      let pinnedComments: string | undefined;
       if (isFirst) {
         state = { streamIndex: 0 };
         forkSeed = (await this.#init.forkSeedLoader?.())?.seed;
       } else {
         const sessionId = this.#sessionId as string;
-        const persisted = (await getSendState(
-          sessionId
-        )) as SessionState | null;
+        const [persisted, queued] = await Promise.all([
+          getSendState(sessionId) as Promise<SessionState | null>,
+          // One-shot comment context: checkmarked threads ride THIS turn,
+          // then flip to "consumed" once it's accepted.
+          getQueuedCommentContext(sessionId),
+        ]);
         const continuationToken =
           persisted?.continuationToken ?? this.#seedToken;
         if (!continuationToken) {
           throw new Error("This investigation can't accept new messages.");
         }
         state = { sessionId, continuationToken, streamIndex: 0 };
+        if (queued) {
+          pinnedComments = queued.digest;
+          this.#pendingCommentIds = queued.ids;
+        }
+      }
+
+      const clientContext: Record<string, string> = {
+        author: this.#init.me.displayName,
+      };
+      if (forkSeed) {
+        clientContext.forkedFromContext = forkSeed;
+      }
+      if (pinnedComments) {
+        clientContext.pinnedComments = pinnedComments;
       }
 
       const session = this.#client.session(state);
-      const res = await session.send({
-        message: text,
-        clientContext: forkSeed
-          ? { author: this.#init.me.displayName, forkedFromContext: forkSeed }
-          : { author: this.#init.me.displayName },
-      });
+      const res = await session.send({ message: text, clientContext });
       // Fire-and-forget: the shared durable stream is the single event source;
       // the POST's response stream is deliberately never iterated.
       this.#sentPending = true;
@@ -238,6 +258,7 @@ export class RoomStore {
       this.#status = "error";
       this.#error = toError(err);
       this.#sentPending = false;
+      this.#pendingCommentIds = [];
       this.#emit();
     }
   };
@@ -348,6 +369,19 @@ export class RoomStore {
         }).catch(() => {
           // Attribution is best-effort; the broadcast already told peers.
         });
+        if (this.#pendingCommentIds.length > 0) {
+          const ids = this.#pendingCommentIds;
+          this.#pendingCommentIds = [];
+          markCommentsConsumed({ ids, turnId: event.data.turnId })
+            .then(() => {
+              this.#bus?.publish("comments:changed", {
+                sessionId: this.#sessionId,
+              });
+            })
+            .catch(() => {
+              // Threads stay queued and ride the next turn instead.
+            });
+        }
       }
     } else {
       this.#appendProjection(event);

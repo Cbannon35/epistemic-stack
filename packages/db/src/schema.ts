@@ -18,6 +18,7 @@
 import { sql } from 'drizzle-orm'
 import {
   type AnyPgColumn,
+  boolean,
   doublePrecision,
   index,
   integer,
@@ -138,6 +139,37 @@ export const investigationTurns = pgTable(
     primaryKey({ columns: [t.sessionId, t.turnId] }),
     index('inv_turns_session_idx').on(t.sessionId),
   ],
+)
+
+// Threaded comments on chat messages within an investigation (app-side
+// discussion, NOT commons receipts — promoting a comment to a commons
+// challenge/assessment is a future pathway). Roots carry a text anchor
+// (quote + context) into the rendered message; replies carry parent_id.
+// One-shot model context: context_queued rides the NEXT turn, then flips to
+// context_consumed_turn (the muted "was in context" state).
+export const comments = pgTable(
+  'comments',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    sessionId: text('session_id')
+      .notNull()
+      .references(() => investigations.id),
+    authorId: uuid('author_id')
+      .notNull()
+      .references(() => contributors.id),
+    parentId: uuid('parent_id').references((): AnyPgColumn => comments.id),
+    messageId: text('message_id'),
+    quote: text('quote'),
+    quotePrefix: text('quote_prefix'),
+    quoteSuffix: text('quote_suffix'),
+    body: text('body').notNull(),
+    visibility: text('visibility').notNull().default('public'), // 'public' | 'private'
+    contextQueued: boolean('context_queued').notNull().default(false),
+    contextConsumedTurn: text('context_consumed_turn'),
+    resolvedAt: timestamp('resolved_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('comments_session_idx').on(t.sessionId)],
 )
 
 // ── investigation roots ──────────────────────────────────────────────────────

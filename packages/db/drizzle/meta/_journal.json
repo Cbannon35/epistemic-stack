@@ -36,6 +36,13 @@
       "when": 1783156785175,
       "tag": "0004_realtime_publication",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1783205334325,
+      "tag": "0005_flashy_sunspot",
+      "breakpoints": true
     }
   ]
 }

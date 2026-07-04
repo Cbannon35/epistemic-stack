@@ -2,7 +2,7 @@
 // palette. Violet is reserved for the eve tour cursor; the four graph accent
 // hues (violet/green/red/amber) are avoided so people never read as edges.
 
-const HUES = [25, 60, 95, 175, 210, 250, 320, 350] as const;
+export const HUES = [25, 60, 95, 175, 210, 250, 320, 350] as const;
 
 function fnv1a(input: string): number {
   let hash = 0x81_1c_9d_c5;
@@ -13,9 +13,13 @@ function fnv1a(input: string): number {
   return hash >>> 0;
 }
 
+/** The palette hue for a user — also names their ::highlight(comment-h<hue>). */
+export function hueForUser(userId: string): number {
+  return HUES[fnv1a(userId) % HUES.length];
+}
+
 export function colorForUser(userId: string): string {
-  const hue = HUES[fnv1a(userId) % HUES.length];
-  return `oklch(0.62 0.14 ${hue})`;
+  return `oklch(0.62 0.14 ${hueForUser(userId)})`;
 }
 
 export const EVE_COLOR = "#7c3aed";
