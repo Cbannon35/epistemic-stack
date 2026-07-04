@@ -453,6 +453,58 @@ textarea:focus-visible {
   animation: glow-pulse 2s ease-in-out infinite;
 }
 
+/* ── multiplayer cursors ───────────────────────────────────────────────── */
+/* Pop-in animates scale only: the cursor layer's rAF loop owns opacity and
+   translate3d, so the mount animation must not touch either. */
+@keyframes cursor-pop {
+  from {
+    scale: 0.6;
+  }
+  to {
+    scale: 1;
+  }
+}
+
+@utility cursor-pop {
+  transform-origin: top left;
+  animation: cursor-pop 200ms var(--ease-spring) both;
+}
+
+.cursor-bubble {
+  opacity: 1;
+  translate: 0 0;
+  transition:
+    opacity 200ms var(--ease-smooth),
+    translate 200ms var(--ease-smooth);
+}
+
+.cursor-bubble.bubble-hidden,
+.cursor-bubble:empty {
+  opacity: 0;
+  translate: 0 2px;
+}
+
+@keyframes eve-halo {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgb(124 58 237 / 0.45);
+  }
+  50% {
+    box-shadow: 0 0 0 7px rgb(124 58 237 / 0);
+  }
+}
+
+@utility eve-halo {
+  animation: eve-halo 2s ease-in-out infinite;
+}
+
+/* The node the eve tour is narrating. */
+.react-flow__node.tour-ring {
+  outline: 2px solid #7c3aed;
+  outline-offset: 4px;
+  border-radius: 10px;
+}
+
 .ProseMirror {
   outline: none;
 }

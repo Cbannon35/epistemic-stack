@@ -21,17 +21,29 @@ import { AssessmentPanel } from "@/app/_components/graph/assessment-panel";
 import { Inspector } from "@/app/_components/graph/inspector";
 import { nodeTypes } from "@/app/_components/graph/nodes";
 import { EDGE_STYLE, type GraphData } from "@/app/_components/graph/types";
+import { CursorLayer } from "@/app/_components/presence/cursor-layer";
+import { PresenceAvatars } from "@/app/_components/presence/presence-avatars";
 import { useRoom } from "@/app/_components/room-provider";
 import { createClient } from "@/lib/supabase/client";
 
 function layout(data: GraphData): Map<string, { x: number; y: number }> {
-  const sim = data.nodes.map((n) => ({ id: n.id, kind: n.kind })) as Array<{
+  // Sort by id first: d3-force is deterministic (seeded LCG + index-based
+  // initial placement) only for identical input ORDER, and Postgres row order
+  // isn't guaranteed. With the sort, every client computes identical positions
+  // for the same graph — which is what lets live cursors and the eve tour
+  // broadcast flow coordinates.
+  const sortedNodes = [...data.nodes].sort((a, b) => a.id.localeCompare(b.id));
+  const sortedEdges = [...data.edges].sort((a, b) => a.id.localeCompare(b.id));
+  const sim = sortedNodes.map((n) => ({ id: n.id, kind: n.kind })) as Array<{
     id: string;
     kind: string;
     x?: number;
     y?: number;
   }>;
-  const links = data.edges.map((e) => ({ source: e.source, target: e.target }));
+  const links = sortedEdges.map((e) => ({
+    source: e.source,
+    target: e.target,
+  }));
   const simulation = forceSimulation(sim)
     // Hypotheses repel harder so their clusters spread out.
     .force(
@@ -291,6 +303,7 @@ export function GraphPanel({ onClose }: { onClose?: () => void }) {
           </button>
         </div>
         <span className="flex items-center gap-3 text-muted-foreground text-xs">
+          <PresenceAvatars />
           {counts ? (
             <span className="hidden sm:inline">
               {counts.hypotheses} hyp · {counts.claims} claims ·{" "}
@@ -340,6 +353,7 @@ export function GraphPanel({ onClose }: { onClose?: () => void }) {
       >
         <Background />
         <Controls showInteractive={false} />
+        <CursorLayer />
       </ReactFlow>
 
       {/* Legend */}
