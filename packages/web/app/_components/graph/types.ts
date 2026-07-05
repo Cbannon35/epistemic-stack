@@ -43,11 +43,21 @@ export type Assessment = {
   openCruxes: number;
 };
 
+// The receipt behind a node (who/how/when) — what lenses weigh at read time.
+export type NodeProvenance = {
+  contributorId: string;
+  contributorName: string;
+  contributorKind: "human" | "agent";
+  method: string;
+  createdAt: string;
+};
+
 export type GraphData = {
   nodes: GraphNode[];
   edges: GraphEdge[];
   counts: GraphCounts;
   assessment?: Assessment;
+  provenance?: Record<string, NodeProvenance>;
 };
 
 // Position → hue for claim tinting. Falls back to neutral for untagged/unknown.

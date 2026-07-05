@@ -25,10 +25,13 @@ export function Inspector({
   node,
   sourceById,
   onClose,
+  lens,
 }: {
   node: GraphNode;
   sourceById: Map<string, { label: string; url?: string | null }>;
   onClose: () => void;
+  // How the viewer's active lens weighs this node, with the rules that fired.
+  lens?: { name: string; score: number; reasons: string[] };
 }) {
   const d = (node.detail ?? {}) as Record<string, unknown>;
   const mentions = (d.mentions ?? []) as Mention[];
@@ -53,6 +56,30 @@ export function Inspector({
         <p className="whitespace-pre-wrap font-medium leading-snug">
           {node.label}
         </p>
+
+        {lens ? (
+          <div className="space-y-1.5 rounded-md border border-border/50 bg-muted/30 p-2">
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-muted-foreground">
+                through <span className="text-foreground">{lens.name}</span>
+              </span>
+              <span className="font-medium tabular-nums">
+                {Math.round(lens.score * 100)}%
+              </span>
+            </div>
+            <div className="h-1 overflow-hidden rounded-full bg-muted">
+              <div
+                className="h-full rounded-full bg-foreground/60 transition-[width] duration-300 ease-out"
+                style={{ width: `${Math.round(lens.score * 100)}%` }}
+              />
+            </div>
+            {lens.reasons.length > 0 ? (
+              <p className="text-[10px] text-muted-foreground">
+                {lens.reasons.join(" · ")}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
 
         {node.kind === "claim" ? (
           <>

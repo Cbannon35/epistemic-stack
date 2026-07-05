@@ -26,9 +26,20 @@ export type GraphEdgeData = {
   diagnosticity?: number | null;
 };
 
+// The receipt behind a node, resolved for read-time trust (lenses): who wrote
+// it, by what method, when. Keyed by node id alongside nodes/edges.
+export type NodeProvenance = {
+  contributorId: string;
+  contributorName: string;
+  contributorKind: "human" | "agent";
+  method: string;
+  createdAt: string;
+};
+
 export type GraphPayload = {
   nodes: GraphNodeData[];
   edges: GraphEdgeData[];
+  provenance: Record<string, NodeProvenance>;
   counts: {
     claims: number;
     sources: number;
@@ -66,6 +77,7 @@ export async function buildGraphData(
     hypotheses,
     hypLinks,
     contributions,
+    contributorRows,
   ] = await Promise.all([
     db.select().from(schema.claims),
     db.select().from(schema.relations),
@@ -78,8 +90,18 @@ export async function buildGraphData(
       .select({
         id: schema.contributions.id,
         sessionId: schema.contributions.sessionId,
+        contributorId: schema.contributions.contributorId,
+        method: schema.contributions.method,
+        createdAt: schema.contributions.createdAt,
       })
       .from(schema.contributions),
+    db
+      .select({
+        id: schema.contributors.id,
+        kind: schema.contributors.kind,
+        displayName: schema.contributors.displayName,
+      })
+      .from(schema.contributors),
   ]);
 
   const sessionOf = new Map(contributions.map((c) => [c.id, c.sessionId]));
@@ -221,6 +243,38 @@ export async function buildGraphData(
     })),
   ];
 
+  // Provenance: resolve each node's contribution back to who/how/when — the
+  // receipt the lens layer weighs at read time.
+  const contributionById = new Map(contributions.map((c) => [c.id, c]));
+  const contributorById = new Map(contributorRows.map((c) => [c.id, c]));
+  const provenance: Record<string, NodeProvenance> = {};
+  const addProvenance = (nodeId: string, contributionId: string) => {
+    const contribution = contributionById.get(contributionId);
+    if (!contribution) {
+      return;
+    }
+    const contributor = contributorById.get(contribution.contributorId);
+    provenance[nodeId] = {
+      contributorId: contribution.contributorId,
+      contributorName: contributor?.displayName ?? "unknown",
+      contributorKind: contributor?.kind ?? "human",
+      method: contribution.method,
+      createdAt: contribution.createdAt.toISOString(),
+    };
+  };
+  for (const c of scopedClaims) {
+    addProvenance(c.canonicalId, c.contributionId);
+  }
+  for (const s of scopedSources) {
+    addProvenance(s.id, s.contributionId);
+  }
+  for (const x of scopedCruxes) {
+    addProvenance(`crux:${x.id}`, x.contributionId);
+  }
+  for (const h of scopedHypotheses) {
+    addProvenance(`hyp:${h.id}`, h.contributionId);
+  }
+
   // Holistic assessment: how supported each hypothesis is (linked claims
   // weighted by diagnosticity), and the residual uncertainty (open cruxes).
   const assessment = {
@@ -252,6 +306,7 @@ export async function buildGraphData(
   return {
     nodes,
     edges,
+    provenance,
     counts: {
       claims: scopedClaims.length,
       sources: scopedSources.length,

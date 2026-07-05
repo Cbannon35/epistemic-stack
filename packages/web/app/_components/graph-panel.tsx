@@ -17,12 +17,26 @@ import {
   forceSimulation,
 } from "d3-force";
 import { PanelRightCloseIcon, RefreshCwIcon } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type CSSProperties,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { AssessmentPanel } from "@/app/_components/graph/assessment-panel";
 import { graphBus } from "@/app/_components/graph/graph-bus";
 import { Inspector } from "@/app/_components/graph/inspector";
 import { nodeTypes } from "@/app/_components/graph/nodes";
 import { EDGE_STYLE, type GraphData } from "@/app/_components/graph/types";
+import {
+  divergenceOutline,
+  opacityForScore,
+} from "@/app/_components/lenses/colors";
+import { LensControl } from "@/app/_components/lenses/lens-control";
+import { LensDiffPanel } from "@/app/_components/lenses/lens-diff-panel";
+import { useLensState } from "@/app/_components/lenses/use-lenses";
 import { CursorLayer } from "@/app/_components/presence/cursor-layer";
 import { PresenceAvatars } from "@/app/_components/presence/presence-avatars";
 import { useRoom } from "@/app/_components/room-provider";
@@ -251,6 +265,23 @@ export function GraphPanel({ onClose }: { onClose?: () => void }) {
     };
   }, [load]);
 
+  // Late-binding trust: score every node through the active lens (or the
+  // A/B pair in compare mode) — client-side, over the payload we already have.
+  const lensState = useLensState(data);
+  const { scores: lensScores, diffScores: lensDiffScores } = lensState;
+
+  // Contributors present in this graph's receipts — feeds the lens editor's
+  // "written by…" rule.
+  const lensContributors = useMemo(() => {
+    const byId = new Map<string, string>();
+    for (const receipt of Object.values(data?.provenance ?? {})) {
+      byId.set(receipt.contributorId, receipt.contributorName.split("@")[0]);
+    }
+    return [...byId.entries()]
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [data]);
+
   // Resolve source ids → label/url for the inspector.
   const sourceById = useMemo(() => {
     const m = new Map<string, { label: string; url?: string | null }>();
@@ -276,6 +307,39 @@ export function GraphPanel({ onClose }: { onClose?: () => void }) {
         hidden.add(n.id);
       }
     }
+    // The lens dims what it discounts (never hides — the record stays); in
+    // compare mode, diverging nodes get an outline toward the trusting side.
+    const effScore = (id: string): number | null => {
+      if (lensDiffScores) {
+        return Math.max(
+          lensDiffScores.a.get(id) ?? 1,
+          lensDiffScores.b.get(id) ?? 1
+        );
+      }
+      return lensScores ? (lensScores.get(id) ?? 1) : null;
+    };
+    const lensStyle = (
+      id: string,
+      isSelected: boolean
+    ): CSSProperties | undefined => {
+      const score = effScore(id);
+      if (score === null) {
+        return;
+      }
+      const style: CSSProperties = {
+        opacity: isSelected ? 1 : opacityForScore(score),
+      };
+      if (lensDiffScores) {
+        const delta =
+          (lensDiffScores.a.get(id) ?? 1) - (lensDiffScores.b.get(id) ?? 1);
+        if (Math.abs(delta) >= 0.02) {
+          style.borderRadius = 12;
+          style.outline = `2px solid ${divergenceOutline(delta)}`;
+          style.outlineOffset = 3;
+        }
+      }
+      return style;
+    };
     const rfNodes: Node[] = data.nodes
       .filter((n) => !hidden.has(n.id))
       .map((n) => ({
@@ -283,6 +347,7 @@ export function GraphPanel({ onClose }: { onClose?: () => void }) {
         type: n.kind,
         position: positions.get(n.id) ?? { x: 0, y: 0 },
         selected: n.id === selectedId,
+        style: lensStyle(n.id, n.id === selectedId),
         data: {
           label: n.label,
           sources: n.sources,
@@ -299,6 +364,12 @@ export function GraphPanel({ onClose }: { onClose?: () => void }) {
           : e.kind === "mention"
             ? 1
             : 1.6;
+        const sourceScore = effScore(e.source);
+        const targetScore = effScore(e.target);
+        const edgeOpacity =
+          sourceScore === null || targetScore === null
+            ? undefined
+            : opacityForScore(Math.min(sourceScore, targetScore));
         return {
           id: e.id,
           source: e.source,
@@ -307,12 +378,21 @@ export function GraphPanel({ onClose }: { onClose?: () => void }) {
             stroke: s.stroke,
             strokeWidth: width,
             strokeDasharray: s.dash,
+            opacity: edgeOpacity,
           },
           animated: e.kind === "supports" || e.kind === "contradicts",
         };
       });
     return { rfNodes, rfEdges };
-  }, [data, positions, selectedId, showSources, showCruxes]);
+  }, [
+    data,
+    positions,
+    selectedId,
+    showSources,
+    showCruxes,
+    lensScores,
+    lensDiffScores,
+  ]);
 
   const selectedNode = data?.nodes.find((n) => n.id === selectedId) ?? null;
   const counts = data?.counts;
@@ -348,6 +428,7 @@ export function GraphPanel({ onClose }: { onClose?: () => void }) {
           >
             ⚖ assessment
           </button>
+          <LensControl contributors={lensContributors} lens={lensState} />
         </div>
         <span className="flex items-center gap-3 text-muted-foreground text-xs">
           <PresenceAvatars view="graph" />
@@ -433,8 +514,27 @@ export function GraphPanel({ onClose }: { onClose?: () => void }) {
         />
       ) : null}
 
+      {lensState.diff && lensState.divergences ? (
+        <LensDiffPanel
+          diff={lensState.diff}
+          divergences={lensState.divergences}
+          onClose={() => lensState.setDiffIds(null)}
+        />
+      ) : null}
+
       {selectedNode ? (
         <Inspector
+          lens={
+            lensScores
+              ? {
+                  name: lensState.active.name,
+                  score: lensScores.get(selectedNode.id) ?? 1,
+                  reasons: lensState
+                    .explain(selectedNode)
+                    .map((rule) => rule.label),
+                }
+              : undefined
+          }
           node={selectedNode}
           onClose={() => setSelectedId(null)}
           sourceById={sourceById}

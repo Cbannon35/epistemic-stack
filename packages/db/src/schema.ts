@@ -357,10 +357,14 @@ export const lenses = pgTable('lenses', {
   id: uuid('id').primaryKey().defaultRandom(),
   name: text('name').notNull(),
   description: text('description'),
-  // { weights: {contributorId|method: number}, priors: {hypothesisId: number},
-  //   independence: 'naive'|'clustered', … } — interpreted by the query layer.
+  // { rules: LensRule[] } — an ordered list of {match, weight} evaluated at read
+  // time by the client-side query layer (packages/web/lib/lenses). Other keys
+  // (priors, independence, …) stay open for richer resolvers.
   config: jsonb('config').notNull().default(sql`'{}'::jsonb`),
+  // Who saved this perspective (built-in lenses live in code, not here).
+  ownerId: uuid('owner_id').references(() => contributors.id),
   contributionId: uuid('contribution_id')
     .notNull()
     .references(() => contributions.id),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 })

@@ -25,7 +25,8 @@ const globalCache = globalThis as unknown as {
 
 /** Get the shared Drizzle client for the local Supabase Postgres (or DATABASE_URL). */
 export function createDb(url: string = process.env.DATABASE_URL ?? DEFAULT_URL): DrizzleDb {
-  const cache = (globalCache.__epistackDb ??= new Map())
+  globalCache.__epistackDb ??= new Map()
+  const cache = globalCache.__epistackDb
   let db = cache.get(url)
   if (!db) {
     db = makeDb(url)
