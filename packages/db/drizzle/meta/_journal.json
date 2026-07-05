@@ -43,6 +43,13 @@
       "when": 1783205334325,
       "tag": "0005_flashy_sunspot",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1783236288617,
+      "tag": "0006_vengeful_smasher",
+      "breakpoints": true
     }
   ]
 }

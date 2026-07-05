@@ -11,3 +11,6 @@ out/
 supabase/.branches/
 supabase/.temp/
 .eve/
+
+# agent worktrees
+.claude/
