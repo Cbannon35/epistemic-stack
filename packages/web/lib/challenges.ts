@@ -126,7 +126,9 @@ export async function respondToChallenge(input: {
     .from(schema.assessments)
     .where(eq(schema.assessments.id, input.challengeId))
     .limit(1);
-  if (challenge?.kind !== "challenge") {
+  // Must be a ROOT challenge — responses thread one level deep, so replying
+  // to a response would orphan the row out of every derived view.
+  if (challenge?.kind !== "challenge" || challenge.respondsTo !== null) {
     return null;
   }
   const contributionId = await recordUserContribution({

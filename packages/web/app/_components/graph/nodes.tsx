@@ -5,6 +5,7 @@ import {
   Position,
 } from "@xyflow/react";
 import type { CSSProperties } from "react";
+import { ChallengeFlag } from "@/app/_components/challenges/challenge-flag";
 import { positionColor } from "./types";
 
 const handleStyle: CSSProperties = {
@@ -66,6 +67,7 @@ export function ClaimNode({ data, selected }: NodeProps<any>) {
       }}
     >
       <Handles />
+      <ChallengeFlag challenges={data.challenges} />
       <div style={clamp(4)}>{data.label}</div>
       {data.sources > 1 ? (
         <div
@@ -97,6 +99,7 @@ export function SourceNode({ data, selected }: NodeProps<any>) {
       }}
     >
       <Handles />
+      <ChallengeFlag challenges={data.challenges} />
       <div style={clamp(2)}>{data.label}</div>
     </div>
   );
@@ -149,6 +152,7 @@ export function HypothesisNode({ data, selected }: NodeProps<any>) {
       }}
     >
       <Handles />
+      <ChallengeFlag challenges={data.challenges} />
       <div
         style={{
           fontSize: 8.5,

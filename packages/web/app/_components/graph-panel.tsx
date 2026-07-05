@@ -206,7 +206,9 @@ export function GraphPanel({ onClose }: { onClose?: () => void }) {
       return;
     }
     const d: GraphData = await res.json();
-    const sig = `${commons ? "commons" : inv}:${d.nodes.length}:${d.edges.length}`;
+    // Challenge entries are part of the signature: a dispute doesn't change
+    // node/edge counts, but its badge still has to repaint everywhere.
+    const sig = `${commons ? "commons" : inv}:${d.nodes.length}:${d.edges.length}:${d.counts.challenges ?? 0}`;
     if (!force && sig === sigRef.current) {
       return;
     }
@@ -287,6 +289,7 @@ export function GraphPanel({ onClose }: { onClose?: () => void }) {
           label: n.label,
           sources: n.sources,
           position: n.position,
+          challenges: n.challenges,
           detail: n.detail,
         },
       }));

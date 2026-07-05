@@ -8,6 +8,7 @@ import {
   SparklesIcon,
 } from "lucide-react";
 import { useState } from "react";
+import { PromoteToChallenge } from "@/app/_components/challenges/promote-to-challenge";
 import {
   type CommentThread,
   useComments,
@@ -63,7 +64,7 @@ function Entry({ comment }: { comment: CommentRow }) {
 // and the one-shot context checkmark — unchecked → queued (rides the NEXT
 // question) → consumed (muted "was in the model's context", re-checkable).
 export function ThreadCard({ thread }: { thread: CommentThread }) {
-  const { reply, toggleQueued, resolve } = useComments();
+  const { reply, toggleQueued, resolve, setOpenThreadId } = useComments();
   const { root, replies } = thread;
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
@@ -155,14 +156,22 @@ export function ThreadCard({ thread }: { thread: CommentThread }) {
               </>
             )}
           </button>
-          <button
-            className="cursor-pointer rounded-md px-1.5 py-1 text-[10px] text-muted-foreground transition-[background-color,color] duration-150 hover:bg-muted hover:text-foreground"
-            onClick={() => resolve(root.id)}
-            title="Resolve — hides the highlight, keeps the thread"
-            type="button"
-          >
-            resolve
-          </button>
+          <span className="flex items-center">
+            {isPrivate ? null : (
+              <PromoteToChallenge
+                commentId={root.id}
+                onDone={() => setOpenThreadId(null)}
+              />
+            )}
+            <button
+              className="cursor-pointer rounded-md px-1.5 py-1 text-[10px] text-muted-foreground transition-[background-color,color] duration-150 hover:bg-muted hover:text-foreground"
+              onClick={() => resolve(root.id)}
+              title="Resolve — hides the highlight, keeps the thread"
+              type="button"
+            >
+              resolve
+            </button>
+          </span>
         </div>
       </div>
     </div>

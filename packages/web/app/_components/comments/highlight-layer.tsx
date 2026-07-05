@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
+import { PromoteChallengeHost } from "@/app/_components/challenges/promote-to-challenge";
 import { findQuoteRange } from "@/app/_components/comments/anchor";
 import { ThreadCard } from "@/app/_components/comments/thread-popover";
 import {
@@ -140,6 +141,9 @@ export function HighlightLayer() {
 
   return (
     <>
+      {/* Owns the promote-to-challenge dialog OUTSIDE the thread popovers —
+          the popover dismisses when a portaled dialog takes focus. */}
+      <PromoteChallengeHost />
       {placed.map(({ thread, messageEl, left, top }) =>
         createPortal(
           <Popover

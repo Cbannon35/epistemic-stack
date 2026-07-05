@@ -1,6 +1,7 @@
 "use client";
 
 import { ExternalLinkIcon, XIcon } from "lucide-react";
+import { NodeProvenance } from "@/app/_components/challenges/node-provenance";
 import type { GraphNode, Mention } from "./types";
 
 const KIND_LABEL: Record<string, string> = {
@@ -136,6 +137,10 @@ export function Inspector({
         {node.kind === "hypothesis" && d.answer_bearing ? (
           <Chip label="answers" value={d.answer_bearing} />
         ) : null}
+
+        {/* Chain of custody + append-only dispute record. Keyed by node so
+            switching selection resets fetches and draft state. */}
+        <NodeProvenance key={node.id} nodeId={node.id} />
       </div>
     </div>
   );
