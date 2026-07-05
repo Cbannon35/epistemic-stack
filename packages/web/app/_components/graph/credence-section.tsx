@@ -115,9 +115,12 @@ function Sparkline({ history }: { history: CredenceDetail["history"] }) {
 export function CredenceSection({
   hypothesisId,
   credence,
+  label,
 }: {
   hypothesisId: string;
   credence: CredenceDetail | null;
+  /** Hypothesis statement — awareness-ticker narration on other clients. */
+  label?: string;
 }) {
   const room = useRoom();
   const mine = useMemo(() => {
@@ -147,6 +150,14 @@ export function CredenceSection({
         hypothesisId,
         value,
         sessionId: room.roomId,
+      });
+      // Narrate on teammates' tickers (repaint still rides the graph reload).
+      room.channel.send("credence:recorded", {
+        userId: room.me.userId,
+        displayName: room.me.displayName,
+        hypothesisLabel: label ?? "a hypothesis",
+        value,
+        ts: Date.now(),
       });
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);

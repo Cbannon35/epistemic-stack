@@ -149,6 +149,11 @@ export function GraphPanel({ onClose }: { onClose?: () => void }) {
 
   const sigRef = useRef("");
   const rootRef = useRef<HTMLDivElement | null>(null);
+  // Last counts per scope — same-scope growth is narrated on the ticker.
+  const prevCountsRef = useRef<{
+    scope: string;
+    counts: GraphData["counts"];
+  } | null>(null);
   const room = useRoom();
   const investigation = room.roomId;
   const invRef = useRef<string | null>(investigation);
@@ -239,6 +244,23 @@ export function GraphPanel({ onClose }: { onClose?: () => void }) {
       return;
     }
     sigRef.current = sig;
+    // Same-scope growth → awareness ticker ("+2 claims · +1 source"). Scope
+    // switches (fork ↔ commons) reset the baseline instead of narrating.
+    const scope = commons ? "commons" : (inv as string);
+    const prev = prevCountsRef.current;
+    if (prev && prev.scope === scope) {
+      const delta = {
+        claims: Math.max(0, d.counts.claims - prev.counts.claims),
+        sources: Math.max(0, d.counts.sources - prev.counts.sources),
+        relations: Math.max(0, d.counts.relations - prev.counts.relations),
+        cruxes: Math.max(0, d.counts.cruxes - prev.counts.cruxes),
+        hypotheses: Math.max(0, d.counts.hypotheses - prev.counts.hypotheses),
+      };
+      if (Object.values(delta).some((n) => n > 0)) {
+        graphBus.emit("graphDelta", delta);
+      }
+    }
+    prevCountsRef.current = { scope, counts: d.counts };
     setData(d);
     setPositions(layout(d));
   }, []);

@@ -3,6 +3,15 @@
 
 type GraphBusEvents = {
   focusNode: { nodeId: string };
+  /** Emitted by the graph panel when a same-scope reload grew the graph —
+   * positive per-kind deltas only. Feeds the awareness ticker. */
+  graphDelta: {
+    claims: number;
+    sources: number;
+    relations: number;
+    cruxes: number;
+    hypotheses: number;
+  };
 };
 
 type AnyHandler = (payload: never) => void;

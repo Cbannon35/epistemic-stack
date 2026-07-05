@@ -170,13 +170,14 @@ export function Inspector({
             <CredenceSection
               credence={(d.credence as CredenceDetail | null) ?? null}
               hypothesisId={String(d.hypothesis_id ?? node.id.slice(4))}
+              label={node.label}
             />
           </>
         ) : null}
 
         {/* Chain of custody + append-only dispute record. Keyed by node so
             switching selection resets fetches and draft state. */}
-        <NodeProvenance key={node.id} nodeId={node.id} />
+        <NodeProvenance key={node.id} nodeId={node.id} nodeLabel={node.label} />
       </div>
     </div>
   );

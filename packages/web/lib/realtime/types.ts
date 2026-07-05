@@ -172,11 +172,48 @@ export type ViewSharedEvent = {
   ts: number;
 };
 
-/** Broadcast "comments:changed" — a comment was added/updated; refetch. */
-export type CommentsChangedEvent = { sessionId: string };
+/** Broadcast "comments:changed" — a comment was added/updated; refetch.
+ * The optional fields feed the awareness ticker; refetch consumers only need
+ * sessionId, so senders that can't cheaply name the action may omit them. */
+export type CommentsChangedEvent = {
+  sessionId: string;
+  actorId?: string;
+  actorName?: string;
+  action?: "commented" | "replied" | "resolved";
+  /** The highlighted passage (roots only) — ticker flavor text. */
+  quote?: string;
+};
 
-/** Broadcast "challenges:changed" — a dispute entry landed; refetch rollups. */
-export type ChallengesChangedEvent = { nodeId: string | null };
+/** Broadcast "challenges:changed" — a dispute entry landed; refetch rollups.
+ * Optional fields feed the awareness ticker (who disputed what). */
+export type ChallengesChangedEvent = {
+  nodeId: string | null;
+  actorId?: string;
+  actorName?: string;
+  nodeLabel?: string;
+  action?: "challenged" | "responded";
+};
+
+/** Broadcast "credence:recorded" — a member put a belief on the record.
+ * Repaints still ride the graph reload; this is awareness-ticker narration. */
+export type CredenceRecordedEvent = {
+  userId: string;
+  displayName: string;
+  hypothesisLabel: string;
+  /** 0..100 as entered in the UI. */
+  value: number;
+  ts: number;
+};
+
+/** Broadcast "typing" — transient composer activity (throttled ~1.5s;
+ * receivers expire entries after ~4s). Distinct from "turn:pending", which
+ * fires once a send is actually accepted. */
+export type TypingEvent = {
+  clientId: string;
+  userId: string;
+  displayName: string;
+  ts: number;
+};
 
 /** Broadcast "turn:pending" — a member's send was accepted; nudge readers. */
 export type TurnPendingEvent = { displayName: string };
@@ -203,6 +240,8 @@ export type RoomEventPayloads = {
   "turn:author": TurnAuthorEvent;
   "comments:changed": CommentsChangedEvent;
   "challenges:changed": ChallengesChangedEvent;
+  "credence:recorded": CredenceRecordedEvent;
+  typing: TypingEvent;
 };
 
 export type RoomEventName = keyof RoomEventPayloads;
@@ -222,6 +261,8 @@ export const ROOM_EVENTS: readonly RoomEventName[] = [
   "turn:author",
   "comments:changed",
   "challenges:changed",
+  "credence:recorded",
+  "typing",
 ];
 
 export const roomTopic = (roomId: string) => `room:${roomId}`;
