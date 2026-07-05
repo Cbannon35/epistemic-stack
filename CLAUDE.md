@@ -84,4 +84,5 @@ cd packages/db  && bunx tsc --noEmit && bunx biome check .
 | Commons search + seeding | `lib/commons-search.ts`, `app/api/commons/` |
 | Credences / belief timeline | `lib/credences.ts`, `app/_components/graph/credence-section.tsx`, time slider in `graph-panel.tsx` |
 | eve agent + tools | `agent/agent.ts`, `agent/instructions.md`, `agent/tools/*.ts`, `agent/lib/commons.ts` |
+| People layer (person cards, follow, lens adopt, belief compare) | `app/_components/people/`, `app/(chat)/people-actions.ts`, `lib/people.ts` |
 | Realtime wire protocol | `lib/realtime/types.ts` (event catalog, identity model) |

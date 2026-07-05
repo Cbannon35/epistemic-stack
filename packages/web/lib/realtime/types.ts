@@ -24,6 +24,10 @@ export type PresenceMeta = {
   activity: "viewing" | "chatting" | "touring";
   /** Which pane this member's pointer is over — avatars follow it. */
   view: "chat" | "graph";
+  /** The lens this member reads the graph through — person cards show it and
+   * offer one-click adoption. Absent on connections predating the field. */
+  lensId?: string;
+  lensName?: string;
   /** Stable per connection — avatar sort order. */
   joinedAt: number;
   /** Bumped on every re-track — freshest-meta dedup. */

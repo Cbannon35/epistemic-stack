@@ -28,6 +28,8 @@ export type RoomChannel = {
   setActivity: (activity: PresenceMeta["activity"]) => void;
   /** Which pane this member is looking at — avatars follow it. */
   setView: (view: PresenceMeta["view"]) => void;
+  /** The lens this member reads through — person cards offer adoption. */
+  setLens: (lens: { id: string; name: string } | null) => void;
 };
 
 type Handler = (payload: unknown) => void;
@@ -47,6 +49,7 @@ export function useRoomChannel(
   const handlersRef = useRef(new Map<RoomEventName, Set<Handler>>());
   const activityRef = useRef<PresenceMeta["activity"]>("viewing");
   const viewRef = useRef<PresenceMeta["view"]>("chat");
+  const lensRef = useRef<{ id: string; name: string } | null>(null);
   const joinedAtRef = useRef(Date.now());
   const identityRef = useRef(identity);
   identityRef.current = identity;
@@ -67,6 +70,8 @@ export function useRoomChannel(
         color: colorForUser(id.userId),
         activity: activityRef.current,
         view: viewRef.current,
+        lensId: lensRef.current?.id,
+        lensName: lensRef.current?.name,
         joinedAt: joinedAtRef.current,
         updatedAt: Date.now(),
       } satisfies PresenceMeta);
@@ -165,5 +170,16 @@ export function useRoomChannel(
     [trackSelf]
   );
 
-  return { peers, send, on, setActivity, setView };
+  const setLens = useCallback(
+    (lens: { id: string; name: string } | null) => {
+      if (lensRef.current?.id === lens?.id) {
+        return;
+      }
+      lensRef.current = lens;
+      trackSelf();
+    },
+    [trackSelf]
+  );
+
+  return { peers, send, on, setActivity, setView, setLens };
 }

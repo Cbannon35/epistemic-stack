@@ -38,6 +38,8 @@ import {
 import { LensControl } from "@/app/_components/lenses/lens-control";
 import { LensDiffPanel } from "@/app/_components/lenses/lens-diff-panel";
 import { useLensState } from "@/app/_components/lenses/use-lenses";
+import { CompareBeliefsPanel } from "@/app/_components/people/compare-beliefs-panel";
+import { peopleBus, usePeopleState } from "@/app/_components/people/people-bus";
 import { CursorLayer } from "@/app/_components/presence/cursor-layer";
 import { PresenceAvatars } from "@/app/_components/presence/presence-avatars";
 import { useRoom } from "@/app/_components/room-provider";
@@ -281,6 +283,24 @@ export function GraphPanel({ onClose }: { onClose?: () => void }) {
   // A/B pair in compare mode) — client-side, over the payload we already have.
   const lensState = useLensState(data);
   const { scores: lensScores, diffScores: lensDiffScores } = lensState;
+  const { setActiveId: setActiveLensId, setDiffIds: setLensDiffIds } =
+    lensState;
+  const activeLens = lensState.active;
+
+  // People layer: the lens choice rides presence (person cards show it and
+  // offer adoption), and "Compare beliefs" opens the credence-gap panel here.
+  const { setLens } = room.channel;
+  const { compare } = usePeopleState();
+  useEffect(() => {
+    setLens({ id: activeLens.id, name: activeLens.name });
+  }, [setLens, activeLens]);
+  useEffect(() => peopleBus.onAdoptLens(setActiveLensId), [setActiveLensId]);
+  useEffect(() => {
+    // The two bottom-right panels share a slot — belief compare wins.
+    if (compare) {
+      setLensDiffIds(null);
+    }
+  }, [compare, setLensDiffIds]);
 
   // Contributors present in this graph's receipts — feeds the lens editor's
   // "written by…" rule.
@@ -631,7 +651,14 @@ export function GraphPanel({ onClose }: { onClose?: () => void }) {
         />
       ) : null}
 
-      {lensState.diff && lensState.divergences ? (
+      {compare ? (
+        <CompareBeliefsPanel
+          onClose={() => peopleBus.setCompare(null)}
+          target={compare}
+        />
+      ) : null}
+
+      {!compare && lensState.diff && lensState.divergences ? (
         <LensDiffPanel
           diff={lensState.diff}
           divergences={lensState.divergences}
