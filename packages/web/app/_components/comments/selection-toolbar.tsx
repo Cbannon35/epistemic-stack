@@ -117,7 +117,7 @@ export function SelectionToolbar() {
             )}
           </p>
           <textarea
-            className="h-16 w-full resize-none rounded-md border border-border/60 bg-background px-2 py-1.5 text-xs outline-none placeholder:text-muted-foreground"
+            className="h-16 w-full resize-none rounded-md border border-border/60 bg-background px-2 py-1.5 text-xs outline-none transition-colors duration-150 placeholder:text-muted-foreground focus:border-ring"
             onChange={(e) => setBody(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {

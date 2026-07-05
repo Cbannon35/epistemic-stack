@@ -56,7 +56,7 @@ export function Inspector({
         </button>
       </div>
 
-      <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-3 text-sm">
+      <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain p-3 text-sm">
         <p className="whitespace-pre-wrap font-medium leading-snug">
           {node.label}
         </p>

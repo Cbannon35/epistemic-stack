@@ -63,7 +63,7 @@ export function CompareBeliefsPanel({
         </button>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto p-1.5">
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-1.5">
         {comparison === null && !failed ? (
           <p className="px-1.5 py-2 text-muted-foreground text-xs">
             Lining up your credences…

@@ -25,7 +25,7 @@ const SHORTCUTS: Array<{ keys: string; where: string; does: string }> = [
     does: "delegate a background investigation (also: the Delegate button)",
   },
   { keys: "Esc", where: "graph", does: "stop your tour · close cursor chat" },
-  { keys: "⌘K", where: "anywhere", does: "search the whole commons" },
+  { keys: "⌘ K", where: "anywhere", does: "search the whole commons" },
   { keys: "Enter", where: "composer", does: "send" },
   {
     keys: "highlight text",

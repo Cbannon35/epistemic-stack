@@ -40,7 +40,7 @@ export function LensDiffPanel({
         </button>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto p-1.5">
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-1.5">
         {parting.length === 0 ? (
           <p className="px-1.5 py-2 text-muted-foreground text-xs">
             These lenses agree on everything in view.

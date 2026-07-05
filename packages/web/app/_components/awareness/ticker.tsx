@@ -248,7 +248,11 @@ export function RoomTicker() {
   }
 
   return (
-    <div className="pointer-events-none fixed right-4 bottom-4 z-40 flex w-80 flex-col items-end gap-1.5">
+    <div
+      aria-live="polite"
+      className="pointer-events-none fixed right-4 bottom-4 z-40 flex w-80 flex-col items-end gap-1.5"
+      role="status"
+    >
       {items.map((item) => (
         <button
           className="fade-in pointer-events-auto flex max-w-full cursor-default items-center gap-1.5 rounded-md border border-border/60 bg-background/90 px-2.5 py-1.5 text-left text-[11px] text-muted-foreground shadow-float backdrop-blur"

@@ -113,7 +113,7 @@ export function CommonsSearchMenuItem() {
         <SearchIcon className="size-4" />
         Search the commons
         <span className="ml-auto text-[10px] text-muted-foreground tracking-widest">
-          ⌘K
+          ⌘&nbsp;K
         </span>
       </SidebarMenuButton>
       <CommandDialog

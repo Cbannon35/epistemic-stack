@@ -144,7 +144,7 @@ export function ViewsTray({
       </button>
       {open ? (
         <div className="fade-in absolute top-full left-0 z-20 mt-2 w-64 overflow-hidden rounded-lg border border-border/60 bg-background/95 shadow-[var(--shadow-float)] backdrop-blur">
-          <div className="max-h-56 overflow-y-auto">
+          <div className="max-h-56 overflow-y-auto overscroll-contain">
             {ordered.length === 0 ? (
               <p className="p-3 text-[11px] text-muted-foreground">
                 No shared views yet — frame the graph and share how you see it.
@@ -190,7 +190,7 @@ export function ViewsTray({
           </div>
           <div className="flex items-center gap-1.5 border-border/40 border-t p-2">
             <input
-              className="min-w-0 flex-1 rounded-md border border-border/60 bg-transparent px-2 py-1 text-xs outline-none placeholder:text-muted-foreground"
+              className="min-w-0 flex-1 rounded-md border border-border/60 bg-transparent px-2 py-1 text-xs outline-none transition-colors duration-150 placeholder:text-muted-foreground focus:border-ring"
               maxLength={60}
               onChange={(e) => setName(e.target.value)}
               onKeyDown={(e) => {

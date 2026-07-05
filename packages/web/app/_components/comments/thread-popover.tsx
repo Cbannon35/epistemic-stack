@@ -97,7 +97,7 @@ export function ThreadCard({ thread }: { thread: CommentThread }) {
         </p>
       </div>
 
-      <div className="min-h-0 flex-1 space-y-2.5 overflow-y-auto px-3 py-2.5">
+      <div className="min-h-0 flex-1 space-y-2.5 overflow-y-auto overscroll-contain px-3 py-2.5">
         <Entry comment={root} />
         {replies.map((r) => (
           <Entry comment={r} key={r.id} />
@@ -111,7 +111,7 @@ export function ThreadCard({ thread }: { thread: CommentThread }) {
 
       <div className="border-t px-3 py-2">
         <input
-          className="w-full rounded-md border border-border/60 bg-background px-2 py-1.5 text-xs outline-none placeholder:text-muted-foreground"
+          className="w-full rounded-md border border-border/60 bg-background px-2 py-1.5 text-xs outline-none transition-colors duration-150 placeholder:text-muted-foreground focus:border-ring"
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter") {

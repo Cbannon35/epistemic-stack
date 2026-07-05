@@ -155,6 +155,12 @@
     text-rendering: optimizeLegibility;
     @apply bg-background text-foreground;
   }
+  /* No 300ms double-tap-zoom delay on interactive elements (touch devices). */
+  button,
+  a,
+  [role="button"] {
+    touch-action: manipulation;
+  }
 }
 
 @layer base {
@@ -397,27 +403,6 @@ textarea:focus-visible {
   }
 }
 
-@keyframes glow-pulse {
-  0%,
-  100% {
-    box-shadow: 0 0 0 0 oklch(0.55 0.12 250 / 0%);
-  }
-  50% {
-    box-shadow: 0 0 0 3px oklch(0.55 0.12 250 / 8%);
-  }
-}
-
-@keyframes subtle-lift {
-  from {
-    transform: translateY(0);
-    box-shadow: var(--shadow-card);
-  }
-  to {
-    transform: translateY(-1px);
-    box-shadow: var(--shadow-float);
-  }
-}
-
 @utility fade-up {
   animation: fade-up 0.25s var(--ease-spring) both;
 }
@@ -447,10 +432,6 @@ textarea:focus-visible {
 
 @utility thinking-dot {
   animation: thinking-dot 1.4s ease-in-out infinite;
-}
-
-@utility composer-glow {
-  animation: glow-pulse 2s ease-in-out infinite;
 }
 
 /* ── multiplayer cursors ───────────────────────────────────────────────── */
@@ -484,18 +465,32 @@ textarea:focus-visible {
   translate: 0 2px;
 }
 
+/* Halo pulses via a scaling ring — transform/opacity only. Animating
+   box-shadow would repaint every frame for as long as eve is on screen. */
 @keyframes eve-halo {
-  0%,
-  100% {
-    box-shadow: 0 0 0 0 rgb(124 58 237 / 0.45);
+  0% {
+    transform: scale(1);
+    opacity: 0.45;
   }
-  50% {
-    box-shadow: 0 0 0 7px rgb(124 58 237 / 0);
+  50%,
+  100% {
+    transform: scale(1.6);
+    opacity: 0;
   }
 }
 
 @utility eve-halo {
-  animation: eve-halo 2s ease-in-out infinite;
+  position: relative;
+
+  &::after {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    content: "";
+    border: 2px solid rgb(124 58 237 / 0.45);
+    border-radius: 9999px;
+    animation: eve-halo 2s ease-in-out infinite;
+  }
 }
 
 /* The node the eve tour is narrating. */

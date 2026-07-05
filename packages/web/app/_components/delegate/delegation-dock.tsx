@@ -134,7 +134,7 @@ export function DelegationDock({
 
       {open ? (
         <div className="fade-up mt-2 w-full rounded-lg border border-border/60 bg-background/95 shadow-[var(--shadow-float)] backdrop-blur">
-          <div className="max-h-72 overflow-y-auto p-1">
+          <div className="max-h-72 overflow-y-auto overscroll-contain p-1">
             {pending ? (
               <div className="flex items-start gap-2 rounded-md px-2 py-1.5">
                 <StatusDot status="running" />

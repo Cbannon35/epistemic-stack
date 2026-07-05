@@ -44,7 +44,7 @@ function timeAgo(iso: string): string {
 const shortName = (name: string) => name.split("@")[0];
 
 const inputClass =
-  "w-full rounded-md border border-border/60 bg-background px-2 py-1.5 text-xs outline-none placeholder:text-muted-foreground";
+  "w-full rounded-md border border-border/60 bg-background px-2 py-1.5 text-xs outline-none transition-colors duration-150 placeholder:text-muted-foreground focus:border-ring";
 
 // One link in the chain of custody: who wrote it, with what method, during
 // whose turn, in which investigation — plus the hash that seals it.

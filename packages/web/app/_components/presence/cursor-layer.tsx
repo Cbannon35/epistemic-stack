@@ -494,7 +494,7 @@ export function CursorLayer() {
         >
           <div className="pointer-events-auto mt-4 ml-4">
             <input
-              className="w-52 rounded-lg rounded-tl-sm border bg-background/95 px-2 py-1 text-foreground text-xs shadow-[var(--shadow-float)] outline-none backdrop-blur placeholder:text-muted-foreground"
+              className="w-52 rounded-lg rounded-tl-sm border bg-background/95 px-2 py-1 text-foreground text-xs shadow-[var(--shadow-float)] outline-none backdrop-blur transition-colors duration-150 placeholder:text-muted-foreground focus:border-ring"
               maxLength={200}
               onBlur={() => closeChat(true)}
               onChange={(e) => handleChatChange(e.target.value)}

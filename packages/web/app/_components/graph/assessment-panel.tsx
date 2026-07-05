@@ -34,7 +34,7 @@ export function AssessmentPanel({
         </button>
       </div>
 
-      <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-3">
+      <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain p-3">
         {hyps.length === 0 ? (
           <p className="text-muted-foreground text-sm">
             No competing hypotheses recorded yet. They appear as the agent lays

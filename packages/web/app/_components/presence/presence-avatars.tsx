@@ -65,7 +65,7 @@ function Overflow({
         </button>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-52 p-1.5">
-        <div className="max-h-56 space-y-0.5 overflow-y-auto">
+        <div className="max-h-56 space-y-0.5 overflow-y-auto overscroll-contain">
           {people.map((person) => (
             <div
               className="flex items-center gap-2 rounded-md px-1.5 py-1 text-xs"

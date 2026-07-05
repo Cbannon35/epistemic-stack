@@ -7,12 +7,9 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://chat.vercel.ai"),
-  title: "Next.js Chatbot Template",
-  description: "Next.js chatbot template using the AI SDK.",
-};
-
-export const viewport = {
-  maximumScale: 1,
+  title: "Epistack",
+  description:
+    "A multiplayer epistemic commons — investigate together, keep receipts, choose your trust at read time.",
 };
 
 const geist = Geist({
