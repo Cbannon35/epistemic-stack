@@ -679,3 +679,67 @@ textarea:focus-visible {
     animation-iteration-count: 1 !important;
   }
 }
+
+/* ── ping gesture (press `p` over the graph) ─────────────────────────────── */
+
+@keyframes ping-ripple {
+  0% {
+    transform: scale(0.25);
+    opacity: 0.9;
+  }
+  100% {
+    transform: scale(1.9);
+    opacity: 0;
+  }
+}
+
+@keyframes ping-name-fade {
+  0%,
+  70% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+.ping .ping-ring {
+  position: absolute;
+  top: -16px;
+  left: -16px;
+  width: 32px;
+  height: 32px;
+  border: 2.5px solid var(--ping-color, currentColor);
+  border-radius: 9999px;
+  opacity: 0;
+  animation: ping-ripple 0.85s cubic-bezier(0.2, 0.7, 0.3, 1) 2;
+}
+
+.ping .ping-ring-late {
+  animation-delay: 0.35s;
+}
+
+.ping .ping-name {
+  animation: ping-name-fade 1.8s ease-out forwards;
+}
+
+/* ── #-mention node chips in chat prose ──────────────────────────────────── */
+
+[data-role] a[href^="#epinode:"] {
+  padding: 0.06em 0.35em;
+  font-size: 0.92em;
+  color: oklch(0.5 0.12 250);
+  text-decoration: none;
+  background: oklch(0.62 0.14 250 / 0.1);
+  border: 1px solid oklch(0.62 0.14 250 / 0.3);
+  border-radius: 6px;
+  transition: background-color 150ms;
+}
+
+[data-role] a[href^="#epinode:"]:hover {
+  background: oklch(0.62 0.14 250 / 0.2);
+}
+
+.dark [data-role] a[href^="#epinode:"] {
+  color: oklch(0.78 0.1 250);
+}

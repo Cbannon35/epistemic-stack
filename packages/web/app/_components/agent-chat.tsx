@@ -3,7 +3,7 @@
 import type { EveMessage } from "eve/client";
 import { GitForkIcon, SearchIcon } from "lucide-react";
 import { useRouter } from "next/navigation";
-import type { FormEvent, ReactNode } from "react";
+import { type FormEvent, type ReactNode, useRef } from "react";
 import { MessagePart } from "@/app/_components/chat/message-parts";
 import { HighlightLayer } from "@/app/_components/comments/highlight-layer";
 import { SelectionToolbar } from "@/app/_components/comments/selection-toolbar";
@@ -14,6 +14,7 @@ import {
 import { RelatedPriorWork } from "@/app/_components/commons/related-work";
 import { PresenceAvatars } from "@/app/_components/presence/presence-avatars";
 import { useRoom } from "@/app/_components/room-provider";
+import { NodeMentionPicker } from "@/app/_components/weave/node-mention";
 import {
   Conversation,
   ConversationContent,
@@ -32,6 +33,7 @@ export function AgentChat({ headerActions }: { headerActions?: ReactNode }) {
   const room = useRoom();
   const router = useRouter();
   const comments = useCommentsProvider();
+  const composerRef = useRef<HTMLDivElement | null>(null);
   const messages: readonly EveMessage[] = room.data.messages ?? [];
   const isEmpty = messages.length === 0;
   const busy = room.status === "submitted" || room.status === "streaming";
@@ -162,7 +164,11 @@ export function AgentChat({ headerActions }: { headerActions?: ReactNode }) {
           </p>
         ) : null}
 
-        <div className="mx-auto w-full max-w-3xl p-4">
+        <div
+          className="relative mx-auto w-full max-w-3xl p-4"
+          ref={composerRef}
+        >
+          <NodeMentionPicker containerRef={composerRef} roomId={room.roomId} />
           <PromptInput onSubmit={handleSubmit}>
             <PromptInputTextarea
               disabled={room.completed}
@@ -171,7 +177,7 @@ export function AgentChat({ headerActions }: { headerActions?: ReactNode }) {
                   ? "This investigation has concluded."
                   : foreignTurn
                     ? `${foreignTurn} is asking…`
-                    : "Ask a research question…"
+                    : "Ask a research question… (# references a graph node)"
               }
             />
             <PromptInputSubmit

@@ -41,6 +41,11 @@ import { useLensState } from "@/app/_components/lenses/use-lenses";
 import { CursorLayer } from "@/app/_components/presence/cursor-layer";
 import { PresenceAvatars } from "@/app/_components/presence/presence-avatars";
 import { useRoom } from "@/app/_components/room-provider";
+import {
+  type ViewSnapshot,
+  ViewsTray,
+} from "@/app/_components/weave/views-tray";
+import type { ViewSharedEvent } from "@/lib/realtime/types";
 import { createClient } from "@/lib/supabase/client";
 
 function layout(data: GraphData): Map<string, { x: number; y: number }> {
@@ -141,6 +146,7 @@ export function GraphPanel({ onClose }: { onClose?: () => void }) {
   const [timeCap, setTimeCap] = useState<number | null>(null);
 
   const sigRef = useRef("");
+  const rootRef = useRef<HTMLDivElement | null>(null);
   const room = useRoom();
   const investigation = room.roomId;
   const invRef = useRef<string | null>(investigation);
@@ -410,6 +416,54 @@ export function GraphPanel({ onClose }: { onClose?: () => void }) {
     timeCap,
   ]);
 
+  // Shared views: capture/apply the current framing (filters, lens, camera,
+  // selection). Camera travels as a flow-space center + zoom — the viewport
+  // translate depends on pane size, the center doesn't.
+  const captureView = useCallback((): ViewSnapshot | null => {
+    const rf = rfRef.current;
+    const el = rootRef.current;
+    if (!(rf && el)) {
+      return null;
+    }
+    const { x, y, zoom } = rf.getViewport();
+    const rect = el.getBoundingClientRect();
+    return {
+      filters: { sources: showSources, cruxes: showCruxes },
+      lensId: lensState.active.id,
+      camera: {
+        cx: (rect.width / 2 - x) / zoom,
+        cy: (rect.height / 2 - y) / zoom,
+        zoom,
+      },
+      selectedId,
+    };
+  }, [showSources, showCruxes, selectedId, lensState.active.id]);
+
+  const applyView = useCallback(
+    (view: ViewSharedEvent) => {
+      setShowSources(view.filters.sources);
+      setShowCruxes(view.filters.cruxes);
+      // A lens id that doesn't resolve locally (deleted, race) is skipped.
+      if (lensState.lenses.some((l) => l.id === view.lensId)) {
+        lensState.setActiveId(view.lensId);
+      }
+      setSelectedId(
+        view.selectedId &&
+          dataRef.current?.nodes.some((n) => n.id === view.selectedId)
+          ? view.selectedId
+          : null
+      );
+      // Wait a frame so just-unfiltered nodes exist before the camera glides.
+      requestAnimationFrame(() => {
+        rfRef.current?.setCenter(view.camera.cx, view.camera.cy, {
+          zoom: view.camera.zoom,
+          duration: 600,
+        });
+      });
+    },
+    [lensState]
+  );
+
   const selectedNode = data?.nodes.find((n) => n.id === selectedId) ?? null;
   const counts = data?.counts;
 
@@ -430,7 +484,7 @@ export function GraphPanel({ onClose }: { onClose?: () => void }) {
   }, [data]);
 
   return (
-    <div className="relative h-full w-full bg-background">
+    <div className="relative h-full w-full bg-background" ref={rootRef}>
       <div className="absolute top-0 right-0 left-0 z-10 flex items-center justify-between gap-2 border-border/40 border-b bg-background/80 px-3 py-2 backdrop-blur">
         <div className="flex items-center gap-2">
           <button
@@ -477,6 +531,11 @@ export function GraphPanel({ onClose }: { onClose?: () => void }) {
               ↺ replay
             </button>
           ) : null}
+          <ViewsTray
+            apply={applyView}
+            capture={captureView}
+            roomId={investigation}
+          />
         </div>
         <span className="flex items-center gap-3 text-muted-foreground text-xs">
           <PresenceAvatars view="graph" />

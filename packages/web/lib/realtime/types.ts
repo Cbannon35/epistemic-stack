@@ -138,6 +138,36 @@ export type DelegationEndEvent = {
   ts: number;
 };
 
+/** Broadcast "ping" — a transient "look here" ripple at a graph position. */
+export type PingEvent = {
+  clientId: string;
+  userId: string;
+  displayName: string;
+  color: string;
+  /** Flow coordinates (same space as cursors). */
+  x: number;
+  y: number;
+  ts: number;
+};
+
+/** Broadcast "view-shared" — a member shares their current graph framing. */
+export type ViewSharedEvent = {
+  id: string;
+  clientId: string;
+  userId: string;
+  displayName: string;
+  color: string;
+  name: string;
+  filters: { sources: boolean; cruxes: boolean };
+  /** Lens applied at capture time — receivers resolve the id locally. */
+  lensId: string;
+  /** Camera as flow-space center + zoom (viewport translate is pane-size
+   * dependent; the center is the same for everyone). */
+  camera: { cx: number; cy: number; zoom: number };
+  selectedId: string | null;
+  ts: number;
+};
+
 /** Broadcast "comments:changed" — a comment was added/updated; refetch. */
 export type CommentsChangedEvent = { sessionId: string };
 
@@ -163,6 +193,8 @@ export type RoomEventPayloads = {
   "delegation-start": DelegationStartEvent;
   "delegation-step": DelegationStepEvent;
   "delegation-end": DelegationEndEvent;
+  ping: PingEvent;
+  "view-shared": ViewSharedEvent;
   "turn:pending": TurnPendingEvent;
   "turn:author": TurnAuthorEvent;
   "comments:changed": CommentsChangedEvent;
@@ -180,6 +212,8 @@ export const ROOM_EVENTS: readonly RoomEventName[] = [
   "delegation-start",
   "delegation-step",
   "delegation-end",
+  "ping",
+  "view-shared",
   "turn:pending",
   "turn:author",
   "comments:changed",

@@ -11,6 +11,7 @@ import {
 import { TourPill } from "@/app/_components/presence/tour-pill";
 import { type EveDriver, useTour } from "@/app/_components/presence/use-tour";
 import { useRoom } from "@/app/_components/room-provider";
+import { PingLayer } from "@/app/_components/weave/pings";
 import { DELEGATE_COLOR, EVE_COLOR } from "@/lib/realtime/color";
 import { isEveCursorId } from "@/lib/realtime/types";
 import { throttle } from "@/lib/throttle";
@@ -473,6 +474,7 @@ export function CursorLayer() {
           register={registerRefs}
         />
       ))}
+      <PingLayer />
       <DelegationDock delegations={delegations} />
       <TourPill
         onFollow={tour.follow}
