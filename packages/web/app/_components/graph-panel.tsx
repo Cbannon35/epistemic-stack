@@ -22,6 +22,7 @@ import { AssessmentPanel } from "@/app/_components/graph/assessment-panel";
 import { graphBus } from "@/app/_components/graph/graph-bus";
 import { Inspector } from "@/app/_components/graph/inspector";
 import { nodeTypes } from "@/app/_components/graph/nodes";
+import { GraphTimeSlider } from "@/app/_components/graph/time-slider";
 import { EDGE_STYLE, type GraphData } from "@/app/_components/graph/types";
 import { CursorLayer } from "@/app/_components/presence/cursor-layer";
 import { PresenceAvatars } from "@/app/_components/presence/presence-avatars";
@@ -122,6 +123,8 @@ export function GraphPanel({ onClose }: { onClose?: () => void }) {
   const [showCruxes, setShowCruxes] = useState(true);
   const [showAssessment, setShowAssessment] = useState(false);
   const [commonsMode, setCommonsMode] = useState(false);
+  // Replay: hide everything contributed after this moment (null = live).
+  const [timeCap, setTimeCap] = useState<number | null>(null);
 
   const sigRef = useRef("");
   const room = useRoom();
@@ -206,7 +209,9 @@ export function GraphPanel({ onClose }: { onClose?: () => void }) {
       return;
     }
     const d: GraphData = await res.json();
-    const sig = `${commons ? "commons" : inv}:${d.nodes.length}:${d.edges.length}`;
+    // Credence count rides the signature: belief-only changes add no nodes or
+    // edges but must still repaint (node bars, inspector, assessment panel).
+    const sig = `${commons ? "commons" : inv}:${d.nodes.length}:${d.edges.length}:${d.counts.credences ?? 0}`;
     if (!force && sig === sigRef.current) {
       return;
     }
@@ -271,7 +276,8 @@ export function GraphPanel({ onClose }: { onClose?: () => void }) {
     for (const n of data.nodes) {
       if (
         (n.kind === "source" && !showSources) ||
-        (n.kind === "crux" && !showCruxes)
+        (n.kind === "crux" && !showCruxes) ||
+        (timeCap != null && typeof n.t === "number" && n.t > timeCap)
       ) {
         hidden.add(n.id);
       }
@@ -291,7 +297,14 @@ export function GraphPanel({ onClose }: { onClose?: () => void }) {
         },
       }));
     const rfEdges: Edge[] = data.edges
-      .filter((e) => !hidden.has(e.source) && !hidden.has(e.target))
+      .filter(
+        (e) =>
+          !(
+            hidden.has(e.source) ||
+            hidden.has(e.target) ||
+            (timeCap != null && typeof e.t === "number" && e.t > timeCap)
+          )
+      )
       .map((e) => {
         const s = EDGE_STYLE[e.kind] ?? EDGE_STYLE.mention;
         const width = e.diagnosticity
@@ -312,10 +325,26 @@ export function GraphPanel({ onClose }: { onClose?: () => void }) {
         };
       });
     return { rfNodes, rfEdges };
-  }, [data, positions, selectedId, showSources, showCruxes]);
+  }, [data, positions, selectedId, showSources, showCruxes, timeCap]);
 
   const selectedNode = data?.nodes.find((n) => n.id === selectedId) ?? null;
   const counts = data?.counts;
+
+  // Replay bounds: the span of contribution timestamps in the loaded graph.
+  const timeBounds = useMemo(() => {
+    const ts: number[] = [];
+    for (const n of data?.nodes ?? []) {
+      if (typeof n.t === "number") {
+        ts.push(n.t);
+      }
+    }
+    if (ts.length < 2) {
+      return null;
+    }
+    const min = Math.min(...ts);
+    const max = Math.max(...ts);
+    return max > min ? { min, max } : null;
+  }, [data]);
 
   return (
     <div className="relative h-full w-full bg-background">
@@ -348,6 +377,22 @@ export function GraphPanel({ onClose }: { onClose?: () => void }) {
           >
             ⚖ assessment
           </button>
+          {timeBounds ? (
+            <button
+              className={`${pillClass} ${
+                timeCap != null
+                  ? "border-border bg-muted text-foreground"
+                  : "border-border/60 text-muted-foreground hover:bg-muted hover:text-foreground"
+              }`}
+              onClick={() =>
+                setTimeCap((cap) => (cap == null ? timeBounds.max : null))
+              }
+              title="Replay how the graph was built, contribution by contribution"
+              type="button"
+            >
+              ↺ replay
+            </button>
+          ) : null}
         </div>
         <span className="flex items-center gap-3 text-muted-foreground text-xs">
           <PresenceAvatars view="graph" />
@@ -425,6 +470,16 @@ export function GraphPanel({ onClose }: { onClose?: () => void }) {
           </div>
         ))}
       </div>
+
+      {timeCap != null && timeBounds ? (
+        <GraphTimeSlider
+          max={timeBounds.max}
+          min={timeBounds.min}
+          onChange={setTimeCap}
+          onClose={() => setTimeCap(null)}
+          value={timeCap}
+        />
+      ) : null}
 
       {showAssessment && data?.assessment ? (
         <AssessmentPanel

@@ -1,5 +1,10 @@
 import "server-only";
 import { createDb, schema } from "@epistack/db";
+import {
+  type CredenceSummary,
+  listCredences,
+  summarizeCredences,
+} from "@/lib/credences";
 import { getAncestorChain } from "@/lib/investigations";
 
 // Read the commons as a graph (nodes + edges + per-node detail). With an
@@ -15,6 +20,8 @@ export type GraphNodeData = {
   label: string;
   sources?: number;
   position?: string | null;
+  /** Contribution timestamp (epoch ms) — powers the replay slider. */
+  t?: number | null;
   detail: Record<string, unknown>;
 };
 
@@ -24,6 +31,8 @@ export type GraphEdgeData = {
   target: string;
   kind: string;
   diagnosticity?: number | null;
+  /** Contribution timestamp (epoch ms) — powers the replay slider. */
+  t?: number | null;
 };
 
 export type GraphPayload = {
@@ -35,6 +44,9 @@ export type GraphPayload = {
     relations: number;
     cruxes: number;
     hypotheses: number;
+    /** Credence entries in scope — bumps the reload signature so belief-only
+     * changes (no new nodes/edges) still repaint every client. */
+    credences?: number;
   };
   assessment: {
     hypotheses: Array<{
@@ -44,6 +56,9 @@ export type GraphPayload = {
       support: number;
       undermine: number;
       claimCount: number;
+      /** Community credence 0..1 (mean of latest per assessor), if any. */
+      credence?: number | null;
+      credenceCount?: number;
     }>;
     openCruxes: number;
   };
@@ -66,6 +81,7 @@ export async function buildGraphData(
     hypotheses,
     hypLinks,
     contributions,
+    credenceEntries,
   ] = await Promise.all([
     db.select().from(schema.claims),
     db.select().from(schema.relations),
@@ -78,11 +94,16 @@ export async function buildGraphData(
       .select({
         id: schema.contributions.id,
         sessionId: schema.contributions.sessionId,
+        createdAt: schema.contributions.createdAt,
       })
       .from(schema.contributions),
+    listCredences(),
   ]);
 
   const sessionOf = new Map(contributions.map((c) => [c.id, c.sessionId]));
+  const timeOf = new Map(
+    contributions.map((c) => [c.id, c.createdAt.getTime()])
+  );
   const inScope = (contributionId: string) => {
     if (!scope) {
       return true;
@@ -141,6 +162,15 @@ export async function buildGraphData(
     mentionsByClaim.set(m.claimId, list);
   }
 
+  // Belief timeline: credences for the hypotheses in scope. Belief is
+  // commons-wide — anyone's registered credence shows wherever the
+  // hypothesis does.
+  const scopedHypIds = new Set(scopedHypotheses.map((h) => h.id));
+  const credenceByHypothesis: Map<string, CredenceSummary> =
+    summarizeCredences(
+      credenceEntries.filter((e) => scopedHypIds.has(e.hypothesisId))
+    );
+
   const nodes: GraphNodeData[] = [
     ...scopedClaims.map((c) => {
       const d = (c.descriptors ?? {}) as Record<string, unknown>;
@@ -150,6 +180,7 @@ export async function buildGraphData(
         label: c.text,
         sources: mentionsByClaim.get(c.canonicalId)?.length ?? 0,
         position: (d.position as string) ?? null,
+        t: timeOf.get(c.contributionId) ?? null,
         detail: {
           discipline: d.discipline ?? null,
           position: d.position ?? null,
@@ -164,6 +195,7 @@ export async function buildGraphData(
       id: s.id,
       kind: "source" as const,
       label: s.title ?? s.url ?? "source",
+      t: timeOf.get(s.contributionId) ?? null,
       detail: {
         url: s.url,
         author: s.author,
@@ -178,13 +210,20 @@ export async function buildGraphData(
       id: `crux:${x.id}`,
       kind: "crux" as const,
       label: x.question,
+      t: timeOf.get(x.contributionId) ?? null,
       detail: { implication: x.implication, status: x.status },
     })),
     ...scopedHypotheses.map((h) => ({
       id: `hyp:${h.id}`,
       kind: "hypothesis" as const,
       label: h.statement,
-      detail: { answer_bearing: h.answerBearing },
+      t: timeOf.get(h.contributionId) ?? null,
+      detail: {
+        answer_bearing: h.answerBearing,
+        // Belief timeline payload: community average + append-only history.
+        credence: credenceByHypothesis.get(h.id) ?? null,
+        hypothesis_id: h.id,
+      },
     })),
   ];
 
@@ -194,12 +233,14 @@ export async function buildGraphData(
       source: r.fromClaimId,
       target: r.toClaimId,
       kind: r.type,
+      t: timeOf.get(r.contributionId) ?? null,
     })),
     ...scopedMentions.map((m) => ({
       id: `men:${m.id}`,
       source: m.claimId,
       target: m.sourceId,
       kind: "mention" as const,
+      t: timeOf.get(m.contributionId) ?? null,
     })),
     ...scopedCruxes
       .filter((x) => x.claimId)
@@ -208,6 +249,7 @@ export async function buildGraphData(
         source: x.claimId as string,
         target: `crux:${x.id}`,
         kind: "crux" as const,
+        t: timeOf.get(x.contributionId) ?? null,
       })),
     ...scopedHypLinks.map((l) => ({
       id: `hl:${l.id}`,
@@ -218,6 +260,7 @@ export async function buildGraphData(
           ? ("hyp_supports" as const)
           : ("hyp_undermines" as const),
       diagnosticity: l.diagnosticity,
+      t: timeOf.get(l.contributionId) ?? null,
     })),
   ];
 
@@ -236,6 +279,7 @@ export async function buildGraphData(
           undermine += w;
         }
       }
+      const credence = credenceByHypothesis.get(h.id);
       return {
         id: h.id,
         statement: h.statement,
@@ -243,6 +287,8 @@ export async function buildGraphData(
         support,
         undermine,
         claimCount: links.length,
+        credence: credence?.average ?? null,
+        credenceCount: credence?.assessors ?? 0,
       };
     }),
     openCruxes: scopedCruxes.filter((x) => x.status === "open" || !x.status)
@@ -258,6 +304,10 @@ export async function buildGraphData(
       relations: scopedRelations.length,
       cruxes: scopedCruxes.length,
       hypotheses: scopedHypotheses.length,
+      credences: [...credenceByHypothesis.values()].reduce(
+        (sum, c) => sum + c.history.length,
+        0
+      ),
     },
     assessment,
   };

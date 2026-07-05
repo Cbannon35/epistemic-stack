@@ -79,6 +79,15 @@ export function AssessmentPanel({
               </div>
               <p className="text-[10px] text-muted-foreground">
                 {h.claimCount} linked claim{h.claimCount === 1 ? "" : "s"}
+                {h.credence != null && (h.credenceCount ?? 0) > 0 ? (
+                  <>
+                    {" · "}
+                    <span className="text-[#7c3aed]">
+                      {Math.round(h.credence * 100)}% community credence
+                    </span>{" "}
+                    ({h.credenceCount})
+                  </>
+                ) : null}
               </p>
             </div>
           ))
