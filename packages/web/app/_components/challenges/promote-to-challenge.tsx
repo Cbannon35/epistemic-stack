@@ -115,7 +115,13 @@ function PromoteDialogBody({
       return;
     }
     invalidateChallengeCounts();
-    channel.send("challenges:changed", { nodeId: target.id });
+    channel.send("challenges:changed", {
+      nodeId: target.id,
+      actorId: room.me.userId,
+      actorName: room.me.displayName,
+      nodeLabel: target.label,
+      action: "challenged",
+    });
     onClose();
     // Land the user on the freshly-flagged node.
     graphBus.emit("focusNode", { nodeId: target.id });

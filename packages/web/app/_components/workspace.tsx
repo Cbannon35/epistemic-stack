@@ -3,6 +3,7 @@
 import { PanelRightOpenIcon } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { AgentChat } from "@/app/_components/agent-chat";
+import { RoomTicker } from "@/app/_components/awareness/ticker";
 import { graphBus } from "@/app/_components/graph/graph-bus";
 import { GraphPanel } from "@/app/_components/graph-panel";
 import { useRoom } from "@/app/_components/room-provider";
@@ -150,6 +151,8 @@ export function Workspace() {
       >
         <GraphPanel onClose={() => setGraphOpen(false)} />
       </div>
+
+      <RoomTicker />
     </div>
   );
 }

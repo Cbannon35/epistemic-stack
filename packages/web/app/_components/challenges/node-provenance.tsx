@@ -267,9 +267,16 @@ function ChallengeForm({
 // how, during whose turn, from which sources) and its append-only challenge
 // record. Everything here is derived from contributions — the graph never
 // stores "the answer", only who said what and when.
-export function NodeProvenance({ nodeId }: { nodeId: string }) {
+export function NodeProvenance({
+  nodeId,
+  nodeLabel,
+}: {
+  nodeId: string;
+  /** Human-readable label — awareness-ticker narration on other clients. */
+  nodeLabel?: string;
+}) {
   const room = useRoom();
-  const { channel, roomId } = room;
+  const { channel, roomId, me } = room;
   const { on, send } = channel;
   const [receipts, setReceipts] = useState<NodeReceipts | null>(null);
   const [challenging, setChallenging] = useState(false);
@@ -286,11 +293,20 @@ export function NodeProvenance({ nodeId }: { nodeId: string }) {
 
   useEffect(() => on("challenges:changed", () => refetch()), [on, refetch]);
 
-  const afterMutation = useCallback(() => {
-    refetch();
-    invalidateChallengeCounts();
-    send("challenges:changed", { nodeId });
-  }, [refetch, send, nodeId]);
+  const afterMutation = useCallback(
+    (action: "challenged" | "responded") => {
+      refetch();
+      invalidateChallengeCounts();
+      send("challenges:changed", {
+        nodeId,
+        actorId: me.userId,
+        actorName: me.displayName,
+        nodeLabel,
+        action,
+      });
+    },
+    [refetch, send, nodeId, nodeLabel, me.userId, me.displayName]
+  );
 
   const file = useCallback(
     async (input: {
@@ -306,7 +322,7 @@ export function NodeProvenance({ nodeId }: { nodeId: string }) {
         sessionId: roomId,
       });
       setChallenging(false);
-      afterMutation();
+      afterMutation("challenged");
     },
     [nodeId, roomId, afterMutation]
   );
@@ -318,7 +334,7 @@ export function NodeProvenance({ nodeId }: { nodeId: string }) {
         body,
         sessionId: roomId,
       });
-      afterMutation();
+      afterMutation("responded");
     },
     [roomId, afterMutation]
   );

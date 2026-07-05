@@ -4,6 +4,11 @@ import type { EveMessage } from "eve/client";
 import { GitForkIcon, SearchIcon } from "lucide-react";
 import { useRouter } from "next/navigation";
 import type { FormEvent, ReactNode } from "react";
+import { CatchUpDigest } from "@/app/_components/awareness/digest-card";
+import {
+  TypingLine,
+  useTypingPresence,
+} from "@/app/_components/awareness/typing";
 import { MessagePart } from "@/app/_components/chat/message-parts";
 import { HighlightLayer } from "@/app/_components/comments/highlight-layer";
 import { SelectionToolbar } from "@/app/_components/comments/selection-toolbar";
@@ -32,6 +37,7 @@ export function AgentChat({ headerActions }: { headerActions?: ReactNode }) {
   const room = useRoom();
   const router = useRouter();
   const comments = useCommentsProvider();
+  const { noteTyping, typers } = useTypingPresence();
   const messages: readonly EveMessage[] = room.data.messages ?? [];
   const isEmpty = messages.length === 0;
   const busy = room.status === "submitted" || room.status === "streaming";
@@ -95,6 +101,12 @@ export function AgentChat({ headerActions }: { headerActions?: ReactNode }) {
             {headerActions}
           </span>
         </header>
+
+        {/* Pinned above the transcript — the conversation sticks to the
+            bottom, so anything inside the scroller would go unseen. */}
+        <div className="mx-auto w-full max-w-3xl px-4 pt-2 empty:hidden">
+          <CatchUpDigest />
+        </div>
 
         <Conversation className="min-h-0 flex-1">
           <ConversationContent className="mx-auto w-full max-w-3xl">
@@ -162,10 +174,13 @@ export function AgentChat({ headerActions }: { headerActions?: ReactNode }) {
           </p>
         ) : null}
 
-        <div className="mx-auto w-full max-w-3xl p-4">
+        <div className="mx-auto w-full max-w-3xl p-4 pt-0">
+          {/* Typing hands off to the header's "‹name› is asking…" once a turn starts. */}
+          <TypingLine hidden={busy} typers={typers} />
           <PromptInput onSubmit={handleSubmit}>
             <PromptInputTextarea
               disabled={room.completed}
+              onChange={noteTyping}
               placeholder={
                 room.completed
                   ? "This investigation has concluded."

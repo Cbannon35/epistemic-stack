@@ -63,11 +63,29 @@ export function useCommentsProvider(): CommentsValue {
 
   useEffect(() => on("comments:changed", () => refetch()), [on, refetch]);
 
-  const broadcast = useCallback(() => {
-    if (roomId) {
-      send("comments:changed", { sessionId: roomId });
-    }
-  }, [send, roomId]);
+  const me = room.me;
+  // Detail (who did what) feeds the awareness ticker on other clients; plain
+  // calls remain pure refetch signals.
+  const broadcast = useCallback(
+    (detail?: {
+      action: "commented" | "replied" | "resolved";
+      quote?: string;
+    }) => {
+      if (roomId) {
+        send("comments:changed", {
+          sessionId: roomId,
+          ...(detail
+            ? {
+                actorId: me.userId,
+                actorName: me.displayName,
+                ...detail,
+              }
+            : {}),
+        });
+      }
+    },
+    [send, roomId, me.userId, me.displayName]
+  );
 
   // Recent transcript tail — context for @eve thread replies.
   const buildContext = useCallback((): string => {
@@ -97,7 +115,12 @@ export function useCommentsProvider(): CommentsValue {
       }
       await addComment({ sessionId: roomId, ...input });
       await refetch();
-      broadcast();
+      broadcast(
+        // Private notes stay private — no narration, refetch only.
+        input.visibility === "public"
+          ? { action: "commented", quote: input.anchor.quote }
+          : undefined
+      );
     },
     [roomId, refetch, broadcast]
   );
@@ -115,7 +138,10 @@ export function useCommentsProvider(): CommentsValue {
         parentId: rootId,
       });
       await refetch();
-      broadcast();
+      const root = comments.find((c) => c.id === rootId);
+      broadcast(
+        root?.visibility === "public" ? { action: "replied" } : undefined
+      );
       // "@eve …" also summons an in-thread reply from eve.
       const question = body.match(EVE_MENTION)
         ? body.replace(EVE_MENTION, "")
@@ -134,7 +160,7 @@ export function useCommentsProvider(): CommentsValue {
         broadcast();
       }
     },
-    [roomId, refetch, broadcast, buildContext]
+    [roomId, refetch, broadcast, buildContext, comments]
   );
 
   const toggleQueued = useCallback(
@@ -153,11 +179,14 @@ export function useCommentsProvider(): CommentsValue {
   const resolve = useCallback(
     async (rootId: string) => {
       setOpenThreadId(null);
+      const root = comments.find((c) => c.id === rootId);
       await resolveComment(rootId);
       await refetch();
-      broadcast();
+      broadcast(
+        root?.visibility === "public" ? { action: "resolved" } : undefined
+      );
     },
-    [refetch, broadcast]
+    [refetch, broadcast, comments]
   );
 
   const threads = useMemo<CommentThread[]>(() => {
