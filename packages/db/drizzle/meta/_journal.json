@@ -50,6 +50,13 @@
       "when": 1783236288617,
       "tag": "0006_vengeful_smasher",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1783236728104,
+      "tag": "0007_skinny_talon",
+      "breakpoints": true
     }
   ]
 }
