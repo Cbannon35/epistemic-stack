@@ -166,10 +166,9 @@ export async function buildGraphData(
   // commons-wide — anyone's registered credence shows wherever the
   // hypothesis does.
   const scopedHypIds = new Set(scopedHypotheses.map((h) => h.id));
-  const credenceByHypothesis: Map<string, CredenceSummary> =
-    summarizeCredences(
-      credenceEntries.filter((e) => scopedHypIds.has(e.hypothesisId))
-    );
+  const credenceByHypothesis: Map<string, CredenceSummary> = summarizeCredences(
+    credenceEntries.filter((e) => scopedHypIds.has(e.hypothesisId))
+  );
 
   const nodes: GraphNodeData[] = [
     ...scopedClaims.map((c) => {

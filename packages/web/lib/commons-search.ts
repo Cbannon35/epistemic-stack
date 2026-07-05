@@ -1,5 +1,5 @@
 import "server-only";
-import { createDb, schema } from "@epistack/db";
+import { createDb } from "@epistack/db";
 import { sql } from "drizzle-orm";
 
 // Cross-investigation retrieval — the compounding read path. Full-text search

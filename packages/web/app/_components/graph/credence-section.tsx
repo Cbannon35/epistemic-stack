@@ -44,8 +44,7 @@ function Sparkline({ history }: { history: CredenceDetail["history"] }) {
     const min = Math.min(...ts);
     const max = Math.max(...ts);
     const range = Math.max(1, max - min);
-    const x = (t: number) =>
-      PAD + ((t - min) / range) * (SPARK_W - PAD * 2);
+    const x = (t: number) => PAD + ((t - min) / range) * (SPARK_W - PAD * 2);
     const y = (v: number) => PAD + (1 - v) * (SPARK_H - PAD * 2);
     const series = meanSeries(history);
     // Stepped line: belief holds until the next entry moves it.
@@ -70,7 +69,9 @@ function Sparkline({ history }: { history: CredenceDetail["history"] }) {
         title: `${h.assessorName}: ${Math.round(h.value * 100)}%`,
       })),
       span:
-        max - min > 0 ? `${formatDay(min)} – ${formatDay(max)}` : formatDay(min),
+        max - min > 0
+          ? `${formatDay(min)} – ${formatDay(max)}`
+          : formatDay(min),
     };
   }, [history]);
 

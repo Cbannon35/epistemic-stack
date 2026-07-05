@@ -380,9 +380,9 @@ export function GraphPanel({ onClose }: { onClose?: () => void }) {
           {timeBounds ? (
             <button
               className={`${pillClass} ${
-                timeCap != null
-                  ? "border-border bg-muted text-foreground"
-                  : "border-border/60 text-muted-foreground hover:bg-muted hover:text-foreground"
+                timeCap == null
+                  ? "border-border/60 text-muted-foreground hover:bg-muted hover:text-foreground"
+                  : "border-border bg-muted text-foreground"
               }`}
               onClick={() =>
                 setTimeCap((cap) => (cap == null ? timeBounds.max : null))
