@@ -8,6 +8,7 @@ import {
   SearchIcon,
 } from "lucide-react";
 import { type ReactNode, useState } from "react";
+import { ChallengeCountBadge } from "@/app/_components/challenges/challenge-count";
 import { graphBus } from "@/app/_components/graph/graph-bus";
 import { EDGE_STYLE, positionColor } from "@/app/_components/graph/types";
 
@@ -127,6 +128,7 @@ function ClaimCard({ input, output }: { input: unknown; output: unknown }) {
           <Chip label={str(i.discipline) as string} />
         ) : null}
         {str(i.position) ? <Chip label={str(i.position) as string} /> : null}
+        <ChallengeCountBadge nodeId={str(o.claim_id)} />
         <span className="text-[10px] text-muted-foreground">
           {o.is_new === false && similarity !== null
             ? `merged · ${Math.round(similarity * 100)}% match`

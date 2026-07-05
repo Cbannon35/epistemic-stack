@@ -1,5 +1,7 @@
 // Shared types for the claim-graph panel.
 
+import type { NodeChallengeSummary } from "@/lib/challenge-types";
+
 export type NodeKind = "claim" | "source" | "crux" | "hypothesis";
 
 export type Mention = { sourceId: string; quote: string };
@@ -25,6 +27,8 @@ export type GraphNode = {
   position?: string | null;
   /** Contribution timestamp (epoch ms) — powers the replay slider. */
   t?: number | null;
+  /** Dispute rollup — present only when the node has been challenged. */
+  challenges?: NodeChallengeSummary;
   detail?: Record<string, unknown> & {
     mentions?: Mention[];
     credence?: CredenceDetail | null;
@@ -49,6 +53,8 @@ export type GraphCounts = {
   cruxes: number;
   hypotheses: number;
   credences?: number;
+  /** Total dispute entries — part of the reload signature. */
+  challenges?: number;
 };
 
 export type HypothesisAssessment = {

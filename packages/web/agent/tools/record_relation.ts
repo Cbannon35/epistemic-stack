@@ -20,6 +20,7 @@ export default defineTool({
       type,
       rationale,
       sessionId: ctx?.session?.id,
+      turnId: ctx?.session?.turn?.id,
     });
     if (!result.ok) {
       return { ok: false, error: result.error };

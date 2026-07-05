@@ -24,6 +24,7 @@ export default defineTool({
       statement,
       answerBearing: answer_bearing,
       sessionId: ctx?.session?.id,
+      turnId: ctx?.session?.turn?.id,
     });
     return { hypothesis_id: id };
   },

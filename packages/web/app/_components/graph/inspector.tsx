@@ -1,6 +1,7 @@
 "use client";
 
 import { ExternalLinkIcon, XIcon } from "lucide-react";
+import { NodeProvenance } from "@/app/_components/challenges/node-provenance";
 import { CredenceSection } from "./credence-section";
 import type { CredenceDetail, GraphNode, Mention } from "./types";
 
@@ -172,6 +173,10 @@ export function Inspector({
             />
           </>
         ) : null}
+
+        {/* Chain of custody + append-only dispute record. Keyed by node so
+            switching selection resets fetches and draft state. */}
+        <NodeProvenance key={node.id} nodeId={node.id} />
       </div>
     </div>
   );

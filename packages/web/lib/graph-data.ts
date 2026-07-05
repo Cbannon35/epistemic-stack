@@ -1,5 +1,7 @@
 import "server-only";
 import { createDb, schema } from "@epistack/db";
+import type { NodeChallengeSummary } from "@/lib/challenge-types";
+import { challengeSummaryByNode } from "@/lib/challenges";
 import {
   type CredenceSummary,
   listCredences,
@@ -22,6 +24,8 @@ export type GraphNodeData = {
   position?: string | null;
   /** Contribution timestamp (epoch ms) — powers the replay slider. */
   t?: number | null;
+  /** Dispute rollup — present only when the node has been challenged. */
+  challenges?: NodeChallengeSummary;
   detail: Record<string, unknown>;
 };
 
@@ -58,6 +62,8 @@ export type GraphPayload = {
     /** Credence entries in scope — bumps the reload signature so belief-only
      * changes (no new nodes/edges) still repaint every client. */
     credences?: number;
+    /** Total dispute entries — part of the client's reload signature. */
+    challenges: number;
   };
   assessment: {
     hypotheses: Array<{
@@ -94,6 +100,7 @@ export async function buildGraphData(
     contributions,
     contributorRows,
     credenceEntries,
+    challengeByNode,
   ] = await Promise.all([
     db.select().from(schema.claims),
     db.select().from(schema.relations),
@@ -119,6 +126,9 @@ export async function buildGraphData(
       })
       .from(schema.contributors),
     listCredences(),
+    // Challenges are NOT scoped to the investigation: a dispute filed from any
+    // room is visible wherever the node appears — that's the adversarial point.
+    challengeSummaryByNode(),
   ]);
 
   const sessionOf = new Map(contributions.map((c) => [c.id, c.sessionId]));
@@ -201,6 +211,7 @@ export async function buildGraphData(
         sources: mentionsByClaim.get(c.canonicalId)?.length ?? 0,
         position: (d.position as string) ?? null,
         t: timeOf.get(c.contributionId) ?? null,
+        challenges: challengeByNode[c.canonicalId],
         detail: {
           discipline: d.discipline ?? null,
           position: d.position ?? null,
@@ -216,6 +227,7 @@ export async function buildGraphData(
       kind: "source" as const,
       label: s.title ?? s.url ?? "source",
       t: timeOf.get(s.contributionId) ?? null,
+      challenges: challengeByNode[s.id],
       detail: {
         url: s.url,
         author: s.author,
@@ -238,6 +250,7 @@ export async function buildGraphData(
       kind: "hypothesis" as const,
       label: h.statement,
       t: timeOf.get(h.contributionId) ?? null,
+      challenges: challengeByNode[`hyp:${h.id}`],
       detail: {
         answer_bearing: h.answerBearing,
         // Belief timeline payload: community average + append-only history.
@@ -359,6 +372,10 @@ export async function buildGraphData(
       hypotheses: scopedHypotheses.length,
       credences: [...credenceByHypothesis.values()].reduce(
         (sum, c) => sum + c.history.length,
+        0
+      ),
+      challenges: Object.values(challengeByNode).reduce(
+        (sum, s) => sum + s.entries,
         0
       ),
     },

@@ -223,9 +223,10 @@ export function GraphPanel({ onClose }: { onClose?: () => void }) {
       return;
     }
     const d: GraphData = await res.json();
-    // Credence count rides the signature: belief-only changes add no nodes or
-    // edges but must still repaint (node bars, inspector, assessment panel).
-    const sig = `${commons ? "commons" : inv}:${d.nodes.length}:${d.edges.length}:${d.counts.credences ?? 0}`;
+    // Credence and challenge counts ride the signature: belief-only or
+    // dispute-only changes add no nodes or edges but must still repaint
+    // (node bars, dispute badges, inspector, assessment panel).
+    const sig = `${commons ? "commons" : inv}:${d.nodes.length}:${d.edges.length}:${d.counts.credences ?? 0}:${d.counts.challenges ?? 0}`;
     if (!force && sig === sigRef.current) {
       return;
     }
@@ -358,6 +359,7 @@ export function GraphPanel({ onClose }: { onClose?: () => void }) {
           label: n.label,
           sources: n.sources,
           position: n.position,
+          challenges: n.challenges,
           detail: n.detail,
         },
       }));

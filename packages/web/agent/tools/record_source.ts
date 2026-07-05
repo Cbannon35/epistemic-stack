@@ -32,6 +32,7 @@ export default defineTool({
       guarantees: peer_reviewed === undefined ? undefined : { peer_reviewed },
       retrieval: { retriever: "openalex" },
       sessionId: ctx?.session?.id,
+      turnId: ctx?.session?.turn?.id,
     });
     return { source_id: sourceId };
   },
