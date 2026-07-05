@@ -9,6 +9,7 @@ import type {
   DelegationBeat,
   DelegationSummary,
 } from "@/lib/delegate/types";
+import { pushEveMemory } from "@/lib/realtime/eve-memory";
 import {
   type DelegationStepEvent,
   delegateCursorId,
@@ -43,6 +44,36 @@ type ActiveRun = {
   y: number;
   hasPos: boolean;
 };
+
+// Which runs THIS TAB is hosting, in sessionStorage: per-tab like hosting
+// itself, but it survives a refresh — so a reloaded delegator resumes driving
+// instead of orphaning the run to the reaper. (A second tab of the same user
+// deliberately does NOT pick it up.)
+const HOSTED_KEY = "epistack-hosted-delegations";
+
+function readHosted(): string[] {
+  try {
+    const raw = sessionStorage.getItem(HOSTED_KEY);
+    const parsed = raw ? (JSON.parse(raw) as unknown) : [];
+    return Array.isArray(parsed)
+      ? parsed.filter((v) => typeof v === "string")
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function markHosted(delegationId: string, hosting: boolean): void {
+  try {
+    const next = readHosted().filter((id) => id !== delegationId);
+    if (hosting) {
+      next.push(delegationId);
+    }
+    sessionStorage.setItem(HOSTED_KEY, JSON.stringify(next.slice(-8)));
+  } catch {
+    // Storage unavailable — the reaper story still applies.
+  }
+}
 
 /** Live (unpersisted) narration per run, for the dock's activity line. */
 export type LiveLine = { kind: DelegationBeat["kind"]; narration: string };
@@ -270,6 +301,15 @@ export function useDelegations(eve: EveDriver): DelegationsApi {
         summary,
         ts: Date.now(),
       });
+      markHosted(delegationId, false);
+      // A landed investigation joins the room-wide eve memory, so follow-up
+      // @eve questions can build on what she just found.
+      if (reason === "complete" && summary && roomIdRef.current) {
+        const ts = Date.now();
+        const entry = `You ran a delegated investigation "${run.brief.slice(0, 120)}" — result: ${summary.slice(0, 300)}`;
+        pushEveMemory(roomIdRef.current, entry, ts);
+        send("eve-memory", { entry, ts });
+      }
       teardown(delegationId);
       run.cancelled = true;
       refetch().catch(() => {
@@ -277,6 +317,68 @@ export function useDelegations(eve: EveDriver): DelegationsApi {
       });
     },
     [send, me.clientId, teardown, refetch]
+  );
+
+  // The step loop, shared by a fresh start and a post-refresh resume: play any
+  // beats in hand, then keep asking the phase machine for more until done. The
+  // server row carries the phase cursor, so the loop itself is stateless.
+  const drive = useCallback(
+    async (
+      delegationId: string,
+      run: ActiveRun,
+      initial: DelegationAdvance | null
+    ) => {
+      let advance = initial;
+      if (advance) {
+        await playBeats(delegationId, advance.beats, run);
+      }
+      while (!(advance?.done || run.cancelled)) {
+        working(
+          delegationId,
+          run,
+          advance ? "working on it…" : "picking the run back up…"
+        );
+        try {
+          const res = await fetch("/api/delegate/step", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ delegationId }),
+          });
+          if (!res.ok) {
+            throw new Error("step failed");
+          }
+          advance = (await res.json()) as DelegationAdvance;
+        } catch {
+          if (!run.cancelled) {
+            finish(delegationId, run, "error");
+            fail("eve hit an error mid-run");
+          }
+          return;
+        }
+        await playBeats(delegationId, advance.beats, run);
+      }
+      if (!run.cancelled) {
+        finish(delegationId, run, "complete", advance?.summary);
+      }
+    },
+    [playBeats, working, finish, fail]
+  );
+
+  // Where a hosted cursor first appears: a given origin, else viewport center.
+  const spawnPoint = useCallback(
+    (origin?: { x: number; y: number }): { x: number; y: number } => {
+      if (origin) {
+        return origin;
+      }
+      const viewport = rf.getViewport();
+      const pane = document.querySelector(".react-flow");
+      const rect = pane?.getBoundingClientRect();
+      return {
+        x: rect ? (rect.width / 2 - viewport.x) / viewport.zoom : 0,
+        y: rect ? (rect.height / 2 - viewport.y) / viewport.zoom : 0,
+      };
+    },
+    [rf]
   );
 
   const start = useCallback(
@@ -311,15 +413,10 @@ export function useDelegations(eve: EveDriver): DelegationsApi {
         return;
       }
       setPending(null);
+      markHosted(advance.delegationId, true);
 
       // Where the cursor first appears: the delegator's pointer, else center.
-      const viewport = rf.getViewport();
-      const pane = document.querySelector(".react-flow");
-      const rect = pane?.getBoundingClientRect();
-      const spawn = origin ?? {
-        x: rect ? (rect.width / 2 - viewport.x) / viewport.zoom : 0,
-        y: rect ? (rect.height / 2 - viewport.y) / viewport.zoom : 0,
-      };
+      const spawn = spawnPoint(origin);
       const run: ActiveRun = {
         hostId: me.clientId,
         hostName: me.displayName,
@@ -347,45 +444,78 @@ export function useDelegations(eve: EveDriver): DelegationsApi {
       // Let React commit the new cursor before the first beat, so the plan
       // narration lands in a mounted bubble instead of a null ref.
       await new Promise((r) => setTimeout(r, 50));
-      await playBeats(advance.delegationId, advance.beats, run);
-      while (!(advance.done || run.cancelled)) {
-        working(advance.delegationId, run, "working on it…");
-        try {
-          const res = await fetch("/api/delegate/step", {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({ delegationId: advance.delegationId }),
-          });
-          if (!res.ok) {
-            throw new Error("step failed");
-          }
-          advance = (await res.json()) as DelegationAdvance;
-        } catch {
-          if (!run.cancelled) {
-            finish(advance.delegationId, run, "error");
-            fail("eve hit an error mid-run");
-          }
-          return;
-        }
-        await playBeats(advance.delegationId, advance.beats, run);
-      }
-      if (!run.cancelled) {
-        finish(advance.delegationId, run, "complete", advance.summary);
-      }
+      await drive(advance.delegationId, run, advance);
     },
     [
       me.clientId,
       me.displayName,
-      rf,
       send,
       syncCursors,
-      playBeats,
-      working,
-      finish,
       refetch,
       fail,
+      drive,
+      spawnPoint,
     ]
   );
+
+  // ── resume after a refresh ─────────────────────────────────────────────────
+  // A reload never runs unmount cleanup, so my running rows stay `running`
+  // server-side with their phase cursor intact. Once the dock list loads,
+  // re-adopt any run this tab was hosting and keep driving it.
+  const resumeTriedRef = useRef(new Set<string>());
+  useEffect(() => {
+    const hosted = readHosted();
+    for (const row of rows) {
+      if (
+        row.status !== "running" ||
+        row.delegatorId !== me.userId ||
+        !hosted.includes(row.id) ||
+        runsRef.current.has(row.id) ||
+        resumeTriedRef.current.has(row.id)
+      ) {
+        continue;
+      }
+      resumeTriedRef.current.add(row.id);
+      const spawn = spawnPoint();
+      const run: ActiveRun = {
+        hostId: me.clientId,
+        hostName: me.displayName,
+        brief: row.brief,
+        lastStepAt: Date.now(),
+        ringNodeId: null,
+        cancelled: false,
+        x: spawn.x,
+        y: spawn.y,
+        hasPos: false,
+      };
+      runsRef.current.set(row.id, run);
+      syncCursors();
+      send("delegation-start", {
+        delegationId: row.id,
+        hostId: me.clientId,
+        hostName: me.displayName,
+        brief: row.brief,
+        ts: Date.now(),
+      });
+      setLiveLine(row.id, {
+        kind: "research",
+        narration: "picking the run back up…",
+      });
+      drive(row.id, run, null).catch(() => {
+        // drive() surfaces its own error state.
+      });
+    }
+  }, [
+    rows,
+    me.userId,
+    me.clientId,
+    me.displayName,
+    send,
+    syncCursors,
+    setLiveLine,
+    drive,
+    spawnPoint,
+  ]);
 
   const cancel = useCallback(
     (delegationId: string) => {
@@ -393,6 +523,7 @@ export function useDelegations(eve: EveDriver): DelegationsApi {
       if (run && run.hostId === me.clientId) {
         run.cancelled = true;
       }
+      markHosted(delegationId, false);
       fetch("/api/delegate/cancel", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -508,6 +639,7 @@ export function useDelegations(eve: EveDriver): DelegationsApi {
       for (const [id, run] of runsRef.current) {
         if (run.hostId === me.clientId) {
           run.cancelled = true;
+          markHosted(id, false);
           send("delegation-end", {
             delegationId: id,
             hostId: me.clientId,

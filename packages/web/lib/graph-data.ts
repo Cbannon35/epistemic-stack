@@ -37,6 +37,8 @@ export type GraphEdgeData = {
   diagnosticity?: number | null;
   /** Contribution timestamp (epoch ms) — powers the replay slider. */
   t?: number | null;
+  /** Dispute rollup — relation edges only, present once challenged. */
+  challenges?: NodeChallengeSummary;
 };
 
 // The receipt behind a node, resolved for read-time trust (lenses): who wrote
@@ -267,6 +269,8 @@ export async function buildGraphData(
       target: r.toClaimId,
       kind: r.type,
       t: timeOf.get(r.contributionId) ?? null,
+      // The rollup keys relations as `rel:<id>` — same as the edge id.
+      challenges: challengeByNode[`rel:${r.id}`],
     })),
     ...scopedMentions.map((m) => ({
       id: `men:${m.id}`,

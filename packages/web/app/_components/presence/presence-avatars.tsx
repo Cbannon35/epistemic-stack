@@ -1,22 +1,29 @@
 "use client";
 
 import { useRoom } from "@/app/_components/room-provider";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { initialsFor } from "@/lib/realtime/color";
 import { dedupeByUser, type PresenceMeta } from "@/lib/realtime/types";
 
 const MAX_SHOWN = 5;
+
+type Person = {
+  userId: string;
+  displayName: string;
+  color: string;
+  title?: string;
+};
 
 export function AvatarStack({
   people,
   size = "size-5",
   text = "text-[9px]",
 }: {
-  people: Array<{
-    userId: string;
-    displayName: string;
-    color: string;
-    title?: string;
-  }>;
+  people: Person[];
   size?: string;
   text?: string;
 }) {
@@ -38,11 +45,37 @@ export function AvatarStack({
         </span>
       ))}
       {overflow > 0 ? (
-        <span
-          className={`flex ${size} items-center justify-center rounded-full bg-muted font-medium ${text} text-muted-foreground`}
-        >
-          +{overflow}
-        </span>
+        <Popover>
+          <PopoverTrigger asChild>
+            <button
+              aria-label={`${overflow} more ${overflow === 1 ? "person" : "people"}`}
+              className={`flex ${size} cursor-pointer items-center justify-center rounded-full bg-muted font-medium ${text} text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground`}
+              type="button"
+            >
+              +{overflow}
+            </button>
+          </PopoverTrigger>
+          <PopoverContent align="end" className="w-52 p-1.5">
+            <div className="max-h-56 space-y-0.5 overflow-y-auto">
+              {people.map((person) => (
+                <div
+                  className="flex items-center gap-2 rounded-md px-1.5 py-1 text-xs"
+                  key={person.userId}
+                >
+                  <span
+                    className="flex size-4 shrink-0 items-center justify-center rounded-full font-medium text-[8px] text-white"
+                    style={{ backgroundColor: person.color }}
+                  >
+                    {initialsFor(person.displayName)}
+                  </span>
+                  <span className="truncate text-foreground">
+                    {person.title ?? person.displayName}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </PopoverContent>
+        </Popover>
       ) : null}
     </span>
   );

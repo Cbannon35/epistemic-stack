@@ -44,7 +44,20 @@ export type GraphEdge = {
   diagnosticity?: number | null;
   /** Contribution timestamp (epoch ms) — powers the replay slider. */
   t?: number | null;
+  /** Dispute rollup — relation edges only, present once challenged. */
+  challenges?: NodeChallengeSummary;
 };
+
+/** A selected relation edge, dressed for the Inspector: same receipts +
+ * disputes machinery as nodes (the challenge layer keys it as `rel:<id>`). */
+export type RelationSubject = {
+  id: string;
+  kind: "relation";
+  label: string;
+  detail?: Record<string, unknown>;
+};
+
+export type InspectorSubject = GraphNode | RelationSubject;
 
 export type GraphCounts = {
   claims: number;

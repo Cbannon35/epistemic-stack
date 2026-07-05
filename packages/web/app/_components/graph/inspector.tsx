@@ -3,13 +3,14 @@
 import { ExternalLinkIcon, XIcon } from "lucide-react";
 import { NodeProvenance } from "@/app/_components/challenges/node-provenance";
 import { CredenceSection } from "./credence-section";
-import type { CredenceDetail, GraphNode, Mention } from "./types";
+import type { CredenceDetail, InspectorSubject, Mention } from "./types";
 
 const KIND_LABEL: Record<string, string> = {
   claim: "Claim",
   source: "Source",
   crux: "Crux",
   hypothesis: "Hypothesis",
+  relation: "Relation",
 };
 
 function Chip({ label, value }: { label: string; value: unknown }) {
@@ -29,7 +30,8 @@ export function Inspector({
   onClose,
   lens,
 }: {
-  node: GraphNode;
+  /** A graph node, or a relation edge dressed as an inspectable subject. */
+  node: InspectorSubject;
   sourceById: Map<string, { label: string; url?: string | null }>;
   onClose: () => void;
   // How the viewer's active lens weighs this node, with the rules that fired.

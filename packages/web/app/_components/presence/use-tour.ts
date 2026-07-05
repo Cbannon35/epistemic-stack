@@ -3,6 +3,7 @@
 import { useReactFlow } from "@xyflow/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRoom } from "@/app/_components/room-provider";
+import { eveMemorySnapshot, pushEveMemory } from "@/lib/realtime/eve-memory";
 import { eveCursorId, type TourStepEvent } from "@/lib/realtime/types";
 
 const STEP_STALE_MS = 20_000;
@@ -14,7 +15,6 @@ const MIN_TOUR_ZOOM = 0.85;
 const MAX_TOUR_ZOOM = 1.2;
 const CONTEXT_MESSAGES = 8;
 const CONTEXT_CLAMP = 320;
-const EVE_MEMORY = 6;
 
 // The eve cursors' puppet strings, implemented by the cursor layer. Each
 // concurrent tour/answer drives its own cursor (id = eveCursorId(tourId)).
@@ -86,8 +86,6 @@ export function useTour(eve: EveDriver) {
   const toursRef = useRef(new Map<string, ActiveTour>());
   const cancelRef = useRef(false);
   const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  /** Rolling memory of this tab's eve exchanges, sent as context. */
-  const eveMemoryRef = useRef<string[]>([]);
   const roomRef = useRef(room);
   roomRef.current = room;
   const { on, send, setActivity } = channel;
@@ -198,7 +196,9 @@ export function useTour(eve: EveDriver) {
     [send, me.clientId, teardown, setActivity]
   );
 
-  // Recent room chat + this tab's prior eve exchanges → eve's context window.
+  // Recent room chat + the ROOM's prior eve exchanges → eve's context window.
+  // Memory is room-wide (shared via the eve-memory broadcast), so one member's
+  // question builds on another's.
   const buildContext = useCallback((): string => {
     const messages = roomRef.current.data.messages ?? [];
     const transcript = messages
@@ -213,7 +213,8 @@ export function useTour(eve: EveDriver) {
       })
       .filter(Boolean)
       .join("\n");
-    const memory = eveMemoryRef.current.join("\n");
+    const currentRoom = roomRef.current.roomId;
+    const memory = currentRoom ? eveMemorySnapshot(currentRoom).join("\n") : "";
     return [
       transcript ? `Chat transcript (recent):\n${transcript}` : null,
       memory ? `Your recent exchanges in this room:\n${memory}` : null,
@@ -222,14 +223,31 @@ export function useTour(eve: EveDriver) {
       .join("\n\n");
   }, []);
 
-  const remember = useCallback((question: string, reply: string) => {
-    eveMemoryRef.current.push(
-      `Q (${new Date().toISOString().slice(11, 16)}): ${question}\nA: ${reply.slice(0, 300)}`
-    );
-    if (eveMemoryRef.current.length > EVE_MEMORY) {
-      eveMemoryRef.current.shift();
-    }
-  }, []);
+  const remember = useCallback(
+    (question: string, reply: string) => {
+      const currentRoom = roomRef.current.roomId;
+      if (!currentRoom) {
+        return;
+      }
+      const ts = Date.now();
+      const entry = `Q (${new Date(ts).toISOString().slice(11, 16)}): ${question}\nA: ${reply.slice(0, 300)}`;
+      pushEveMemory(currentRoom, entry, ts);
+      send("eve-memory", { entry, ts });
+    },
+    [send]
+  );
+
+  // Peers' exchanges join the same ring.
+  useEffect(
+    () =>
+      on("eve-memory", (p) => {
+        const currentRoom = roomRef.current.roomId;
+        if (currentRoom) {
+          pushEveMemory(currentRoom, p.entry, p.ts);
+        }
+      }),
+    [on]
+  );
 
   const start = useCallback(
     async (question: string, origin?: { x: number; y: number }) => {

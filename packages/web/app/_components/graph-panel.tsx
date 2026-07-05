@@ -25,12 +25,17 @@ import {
   useRef,
   useState,
 } from "react";
+import { CONTESTED_COLOR } from "@/app/_components/challenges/challenge-flag";
 import { AssessmentPanel } from "@/app/_components/graph/assessment-panel";
 import { graphBus } from "@/app/_components/graph/graph-bus";
 import { Inspector } from "@/app/_components/graph/inspector";
 import { nodeTypes } from "@/app/_components/graph/nodes";
 import { GraphTimeSlider } from "@/app/_components/graph/time-slider";
-import { EDGE_STYLE, type GraphData } from "@/app/_components/graph/types";
+import {
+  EDGE_STYLE,
+  type GraphData,
+  type InspectorSubject,
+} from "@/app/_components/graph/types";
 import {
   divergenceOutline,
   opacityForScore,
@@ -342,7 +347,9 @@ export function GraphPanel({ onClose }: { onClose?: () => void }) {
         if (Math.abs(delta) >= 0.02) {
           style.borderRadius = 12;
           style.outline = `2px solid ${divergenceOutline(delta)}`;
-          style.outlineOffset = 3;
+          // Selected nodes already wear a 2px selection ring (box-shadow);
+          // push the divergence outline further out so they read as two rings.
+          style.outlineOffset = isSelected ? 6 : 3;
         }
       }
       return style;
@@ -374,6 +381,7 @@ export function GraphPanel({ onClose }: { onClose?: () => void }) {
       )
       .map((e) => {
         const s = EDGE_STYLE[e.kind] ?? EDGE_STYLE.mention;
+        const isSelected = e.id === selectedId;
         const width = e.diagnosticity
           ? 1 + e.diagnosticity * 2.5
           : e.kind === "mention"
@@ -385,17 +393,36 @@ export function GraphPanel({ onClose }: { onClose?: () => void }) {
           sourceScore === null || targetScore === null
             ? undefined
             : opacityForScore(Math.min(sourceScore, targetScore));
+        // Contested relations wear the edge equivalent of the node corner
+        // flag: a ⚑ at the midpoint, red while open, quiet once answered.
+        const contested = e.challenges?.state === "contested";
         return {
           id: e.id,
           source: e.source,
           target: e.target,
           style: {
             stroke: s.stroke,
-            strokeWidth: width,
+            strokeWidth: isSelected ? width + 1.4 : width,
             strokeDasharray: s.dash,
-            opacity: edgeOpacity,
+            opacity: isSelected ? 1 : edgeOpacity,
           },
           animated: e.kind === "supports" || e.kind === "contradicts",
+          ...(e.challenges
+            ? {
+                label: `⚑ ${contested ? e.challenges.open : e.challenges.total}`,
+                labelStyle: {
+                  fill: contested ? "#fff" : "var(--muted-foreground)",
+                  fontSize: 8,
+                  fontWeight: 700,
+                },
+                labelBgStyle: {
+                  fill: contested ? CONTESTED_COLOR : "var(--muted)",
+                  fillOpacity: 1,
+                },
+                labelBgPadding: [4, 2] as [number, number],
+                labelBgBorderRadius: 6,
+              }
+            : {}),
         };
       });
     return { rfNodes, rfEdges };
@@ -410,7 +437,31 @@ export function GraphPanel({ onClose }: { onClose?: () => void }) {
     timeCap,
   ]);
 
-  const selectedNode = data?.nodes.find((n) => n.id === selectedId) ?? null;
+  // The Inspector's subject: a node, or a relation edge dressed as one (same
+  // receipts + disputes machinery — the challenge layer keys edges as rel:…).
+  const selected = useMemo((): InspectorSubject | null => {
+    if (!(selectedId && data)) {
+      return null;
+    }
+    const node = data.nodes.find((n) => n.id === selectedId);
+    if (node) {
+      return node;
+    }
+    const edge = data.edges.find((e) => e.id === selectedId);
+    if (!edge?.id.startsWith("rel:")) {
+      return null;
+    }
+    const labelOf = (id: string) => {
+      const label = data.nodes.find((n) => n.id === id)?.label ?? "a claim";
+      return `“${label.length > 80 ? `${label.slice(0, 80)}…` : label}”`;
+    };
+    return {
+      id: edge.id,
+      kind: "relation",
+      label: `${labelOf(edge.source)} ${edge.kind.replace(/_/g, " ")} ${labelOf(edge.target)}`,
+      detail: { relation: edge.kind.replace(/_/g, " ") },
+    };
+  }, [selectedId, data]);
   const counts = data?.counts;
 
   // Replay bounds: the span of contribution timestamps in the loaded graph.
@@ -523,6 +574,12 @@ export function GraphPanel({ onClose }: { onClose?: () => void }) {
         nodes={rfNodes}
         nodesDraggable={false}
         nodeTypes={nodeTypes}
+        onEdgeClick={(_, edge) => {
+          // Only relation edges carry a disputable assertion of their own.
+          if (edge.id.startsWith("rel:")) {
+            setSelectedId(edge.id);
+          }
+        }}
         onInit={(instance) => {
           rfRef.current = instance;
         }}
@@ -580,20 +637,20 @@ export function GraphPanel({ onClose }: { onClose?: () => void }) {
         />
       ) : null}
 
-      {selectedNode ? (
+      {selected ? (
         <Inspector
           lens={
-            lensScores
+            lensScores && selected.kind !== "relation"
               ? {
                   name: lensState.active.name,
-                  score: lensScores.get(selectedNode.id) ?? 1,
+                  score: lensScores.get(selected.id) ?? 1,
                   reasons: lensState
-                    .explain(selectedNode)
+                    .explain(selected)
                     .map((rule) => rule.label),
                 }
               : undefined
           }
-          node={selectedNode}
+          node={selected}
           onClose={() => setSelectedId(null)}
           sourceById={sourceById}
         />

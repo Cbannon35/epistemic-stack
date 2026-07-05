@@ -3,6 +3,8 @@
 
 type GraphBusEvents = {
   focusNode: { nodeId: string };
+  /** Reveal the graph pane and open the investigations dock composer. */
+  openDelegate: Record<string, never>;
 };
 
 type AnyHandler = (payload: never) => void;

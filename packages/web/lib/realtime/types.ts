@@ -167,6 +167,9 @@ export type RoomEventPayloads = {
   "turn:author": TurnAuthorEvent;
   "comments:changed": CommentsChangedEvent;
   "challenges:changed": ChallengesChangedEvent;
+  /** A completed @eve exchange or delegation summary joining the room-wide
+   * eve memory ring (lib/realtime/eve-memory.ts). */
+  "eve-memory": { entry: string; ts: number };
 };
 
 export type RoomEventName = keyof RoomEventPayloads;
@@ -184,6 +187,7 @@ export const ROOM_EVENTS: readonly RoomEventName[] = [
   "turn:author",
   "comments:changed",
   "challenges:changed",
+  "eve-memory",
 ];
 
 export const roomTopic = (roomId: string) => `room:${roomId}`;
