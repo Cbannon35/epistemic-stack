@@ -3,6 +3,7 @@
 import { GitForkIcon, LogOutIcon, PlusIcon, SearchIcon } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
+import { CommonsSearchMenuItem } from "@/app/_components/commons/commons-search";
 import { useNav } from "@/app/_components/nav-context";
 import { AvatarStack } from "@/app/_components/presence/presence-avatars";
 import { useRoom } from "@/app/_components/room-provider";
@@ -78,6 +79,7 @@ export function AppSidebar({
               New investigation
             </SidebarMenuButton>
           </SidebarMenuItem>
+          <CommonsSearchMenuItem />
         </SidebarMenu>
       </SidebarHeader>
 

@@ -11,6 +11,7 @@ import {
   CommentsProvider,
   useCommentsProvider,
 } from "@/app/_components/comments/use-comments";
+import { RelatedPriorWork } from "@/app/_components/commons/related-work";
 import { PresenceAvatars } from "@/app/_components/presence/presence-avatars";
 import { useRoom } from "@/app/_components/room-provider";
 import {
@@ -152,6 +153,8 @@ export function AgentChat({ headerActions }: { headerActions?: ReactNode }) {
           <SelectionToolbar />
           <HighlightLayer />
         </Conversation>
+
+        <RelatedPriorWork />
 
         {room.error ? (
           <p className="mx-auto w-full max-w-3xl px-4 pb-2 text-destructive text-sm">

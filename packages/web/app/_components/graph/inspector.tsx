@@ -1,7 +1,8 @@
 "use client";
 
 import { ExternalLinkIcon, XIcon } from "lucide-react";
-import type { GraphNode, Mention } from "./types";
+import { CredenceSection } from "./credence-section";
+import type { CredenceDetail, GraphNode, Mention } from "./types";
 
 const KIND_LABEL: Record<string, string> = {
   claim: "Claim",
@@ -160,8 +161,16 @@ export function Inspector({
           </div>
         ) : null}
 
-        {node.kind === "hypothesis" && d.answer_bearing ? (
-          <Chip label="answers" value={d.answer_bearing} />
+        {node.kind === "hypothesis" ? (
+          <>
+            {d.answer_bearing ? (
+              <Chip label="answers" value={d.answer_bearing} />
+            ) : null}
+            <CredenceSection
+              credence={(d.credence as CredenceDetail | null) ?? null}
+              hypothesisId={String(d.hypothesis_id ?? node.id.slice(4))}
+            />
+          </>
         ) : null}
       </div>
     </div>

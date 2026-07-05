@@ -19,6 +19,7 @@ import {
   getQueuedCommentContext,
   markCommentsConsumed,
 } from "@/app/(chat)/comment-actions";
+import { getCommonsSendContext } from "@/app/(chat)/commons-actions";
 import type { TurnAuthor } from "@/lib/investigations";
 
 // Multiplayer chat store. eve's durable session stream is the single source of
@@ -186,6 +187,13 @@ export class RoomStore {
 
     try {
       const isFirst = this.#sessionId === undefined;
+      // Cross-investigation compounding: fetch what OTHER investigations
+      // already established about this question, in parallel with the send
+      // state below. Best-effort — a miss just means no seed this turn.
+      const commonsPromise = getCommonsSendContext({
+        query: text,
+        excludeSessionId: this.#sessionId ?? null,
+      }).catch(() => null);
       let state: SessionState;
       let forkSeed: string | undefined;
       let pinnedComments: string | undefined;
@@ -220,6 +228,10 @@ export class RoomStore {
       }
       if (pinnedComments) {
         clientContext.pinnedComments = pinnedComments;
+      }
+      const commonsContext = await commonsPromise;
+      if (commonsContext) {
+        clientContext.commonsContext = commonsContext;
       }
 
       const session = this.#client.session(state);

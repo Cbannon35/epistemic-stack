@@ -135,6 +135,10 @@ export function CruxNode({ data, selected }: NodeProps<any>) {
 
 export function HypothesisNode({ data, selected }: NodeProps<any>) {
   const ab = data.detail?.answer_bearing as string | undefined;
+  const credence = data.detail?.credence as
+    | { average: number; assessors: number }
+    | null
+    | undefined;
   return (
     <div
       className="graph-node"
@@ -166,6 +170,37 @@ export function HypothesisNode({ data, selected }: NodeProps<any>) {
       >
         {data.label}
       </div>
+      {credence ? (
+        <div style={{ marginTop: 6 }}>
+          <div
+            style={{
+              height: 3,
+              borderRadius: 999,
+              background: "color-mix(in oklab, #7c3aed 18%, transparent)",
+              overflow: "hidden",
+            }}
+          >
+            <div
+              style={{
+                height: "100%",
+                width: `${Math.round(credence.average * 100)}%`,
+                borderRadius: 999,
+                background: "#7c3aed",
+              }}
+            />
+          </div>
+          <div
+            style={{
+              marginTop: 2,
+              fontSize: 8.5,
+              color: "var(--muted-foreground)",
+            }}
+          >
+            {Math.round(credence.average * 100)}% community credence ·{" "}
+            {credence.assessors}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

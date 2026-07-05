@@ -4,13 +4,32 @@ export type NodeKind = "claim" | "source" | "crux" | "hypothesis";
 
 export type Mention = { sourceId: string; quote: string };
 
+// Belief timeline payload attached to hypothesis nodes (append-only history;
+// community average = mean of each assessor's latest value, 0..1).
+export type CredenceDetail = {
+  average: number;
+  assessors: number;
+  history: Array<{
+    t: number;
+    value: number;
+    assessorId: string;
+    assessorName: string;
+  }>;
+};
+
 export type GraphNode = {
   id: string;
   kind: NodeKind;
   label: string;
   sources?: number;
   position?: string | null;
-  detail?: Record<string, unknown> & { mentions?: Mention[] };
+  /** Contribution timestamp (epoch ms) — powers the replay slider. */
+  t?: number | null;
+  detail?: Record<string, unknown> & {
+    mentions?: Mention[];
+    credence?: CredenceDetail | null;
+    hypothesis_id?: string;
+  };
 };
 
 export type GraphEdge = {
@@ -19,6 +38,8 @@ export type GraphEdge = {
   target: string;
   kind: string;
   diagnosticity?: number | null;
+  /** Contribution timestamp (epoch ms) — powers the replay slider. */
+  t?: number | null;
 };
 
 export type GraphCounts = {
@@ -27,6 +48,7 @@ export type GraphCounts = {
   relations: number;
   cruxes: number;
   hypotheses: number;
+  credences?: number;
 };
 
 export type HypothesisAssessment = {
@@ -36,6 +58,8 @@ export type HypothesisAssessment = {
   support: number;
   undermine: number;
   claimCount: number;
+  credence?: number | null;
+  credenceCount?: number;
 };
 
 export type Assessment = {
