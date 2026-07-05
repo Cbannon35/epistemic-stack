@@ -107,6 +107,9 @@ export type TourEndEvent = {
 /** Broadcast "comments:changed" — a comment was added/updated; refetch. */
 export type CommentsChangedEvent = { sessionId: string };
 
+/** Broadcast "challenges:changed" — a dispute entry landed; refetch rollups. */
+export type ChallengesChangedEvent = { nodeId: string | null };
+
 /** Broadcast "turn:pending" — a member's send was accepted; nudge readers. */
 export type TurnPendingEvent = { displayName: string };
 
@@ -126,6 +129,7 @@ export type RoomEventPayloads = {
   "turn:pending": TurnPendingEvent;
   "turn:author": TurnAuthorEvent;
   "comments:changed": CommentsChangedEvent;
+  "challenges:changed": ChallengesChangedEvent;
 };
 
 export type RoomEventName = keyof RoomEventPayloads;
@@ -139,6 +143,7 @@ export const ROOM_EVENTS: readonly RoomEventName[] = [
   "turn:pending",
   "turn:author",
   "comments:changed",
+  "challenges:changed",
 ];
 
 export const roomTopic = (roomId: string) => `room:${roomId}`;

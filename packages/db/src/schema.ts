@@ -54,6 +54,11 @@ export const relationType = pgEnum('relation_type', [
   'refines',
 ])
 export const assessmentKind = pgEnum('assessment_kind', ['endorse', 'challenge', 'credence'])
+export const challengeType = pgEnum('challenge_type', [
+  'counter_evidence',
+  'rival_interpretation',
+  'methodological_objection',
+])
 export const cruxStatus = pgEnum('crux_status', [
   'open',
   'searching',
@@ -86,6 +91,10 @@ export const contributions = pgTable(
     signature: text('signature'), // optional signature over payloadHash by the contributor key
     supersedes: uuid('supersedes'), // prior contribution this replaces (self-ref, nullable)
     sessionId: text('session_id'), // the eve session (= investigation) that produced this write
+    // The eve turn within that session (ctx.session.turn.id) — joined through
+    // investigation_turns this attributes agent writes to the human who asked.
+    // Nullable: rows written before this column existed cannot be backfilled.
+    turnId: text('turn_id'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
@@ -332,11 +341,19 @@ export const assessments = pgTable(
       .notNull()
       .references(() => contributors.id),
     kind: assessmentKind('kind').notNull(),
-    // exactly one target is set (claim / relation / hypothesis)
+    // exactly one target is set (claim / relation / hypothesis / source)
     claimId: text('claim_id').references(() => claims.canonicalId),
     relationId: uuid('relation_id').references(() => relations.id),
     hypothesisId: uuid('hypothesis_id').references(() => hypotheses.id),
+    sourceId: text('source_id').references(() => sources.id),
     credence: doublePrecision('credence'), // 0..1, only for kind = 'credence'
+    // Challenges (kind = 'challenge'): the typed dispute, never deleted. A node's
+    // contested/answered state is DERIVED from open challenges + responses.
+    challengeType: challengeType('challenge_type'), // only for kind = 'challenge'
+    evidenceUrl: text('evidence_url'), // optional source backing a dispute/response
+    // A response to a challenge is itself an append-only assessment on the same
+    // target; responds_to threads it under the challenge it answers.
+    respondsTo: uuid('responds_to').references((): AnyPgColumn => assessments.id),
     method: text('method'), // how this assessment was reached (a skill@version)
     stake: doublePrecision('stake'), // optional reputation/economic stake behind it
     rationale: text('rationale'),
@@ -347,6 +364,7 @@ export const assessments = pgTable(
   (t) => [
     index('assessments_claim_idx').on(t.claimId),
     index('assessments_assessor_idx').on(t.assessorId),
+    index('assessments_responds_idx').on(t.respondsTo),
   ],
 )
 

@@ -40,6 +40,7 @@ export default defineTool({
       quote,
       descriptors: { discipline, position, evidence_type, era },
       sessionId: ctx?.session?.id,
+      turnId: ctx?.session?.turn?.id,
     });
     return {
       claim_id: result.canonicalId,

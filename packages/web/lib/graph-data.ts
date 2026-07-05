@@ -1,5 +1,7 @@
 import "server-only";
 import { createDb, schema } from "@epistack/db";
+import type { NodeChallengeSummary } from "@/lib/challenge-types";
+import { challengeSummaryByNode } from "@/lib/challenges";
 import { getAncestorChain } from "@/lib/investigations";
 
 // Read the commons as a graph (nodes + edges + per-node detail). With an
@@ -15,6 +17,8 @@ export type GraphNodeData = {
   label: string;
   sources?: number;
   position?: string | null;
+  /** Dispute rollup — present only when the node has been challenged. */
+  challenges?: NodeChallengeSummary;
   detail: Record<string, unknown>;
 };
 
@@ -35,6 +39,8 @@ export type GraphPayload = {
     relations: number;
     cruxes: number;
     hypotheses: number;
+    /** Total dispute entries — part of the client's reload signature. */
+    challenges: number;
   };
   assessment: {
     hypotheses: Array<{
@@ -66,6 +72,7 @@ export async function buildGraphData(
     hypotheses,
     hypLinks,
     contributions,
+    challengeByNode,
   ] = await Promise.all([
     db.select().from(schema.claims),
     db.select().from(schema.relations),
@@ -80,6 +87,9 @@ export async function buildGraphData(
         sessionId: schema.contributions.sessionId,
       })
       .from(schema.contributions),
+    // Challenges are NOT scoped to the investigation: a dispute filed from any
+    // room is visible wherever the node appears — that's the adversarial point.
+    challengeSummaryByNode(),
   ]);
 
   const sessionOf = new Map(contributions.map((c) => [c.id, c.sessionId]));
@@ -150,6 +160,7 @@ export async function buildGraphData(
         label: c.text,
         sources: mentionsByClaim.get(c.canonicalId)?.length ?? 0,
         position: (d.position as string) ?? null,
+        challenges: challengeByNode[c.canonicalId],
         detail: {
           discipline: d.discipline ?? null,
           position: d.position ?? null,
@@ -164,6 +175,7 @@ export async function buildGraphData(
       id: s.id,
       kind: "source" as const,
       label: s.title ?? s.url ?? "source",
+      challenges: challengeByNode[s.id],
       detail: {
         url: s.url,
         author: s.author,
@@ -184,6 +196,7 @@ export async function buildGraphData(
       id: `hyp:${h.id}`,
       kind: "hypothesis" as const,
       label: h.statement,
+      challenges: challengeByNode[`hyp:${h.id}`],
       detail: { answer_bearing: h.answerBearing },
     })),
   ];
@@ -258,6 +271,10 @@ export async function buildGraphData(
       relations: scopedRelations.length,
       cruxes: scopedCruxes.length,
       hypotheses: scopedHypotheses.length,
+      challenges: Object.values(challengeByNode).reduce(
+        (sum, s) => sum + s.entries,
+        0
+      ),
     },
     assessment,
   };

@@ -40,7 +40,8 @@ async function ensureAgentContributor() {
 async function recordContribution(
   method: string,
   payload: string,
-  sessionId?: string
+  sessionId?: string,
+  turnId?: string
 ): Promise<string> {
   await ensureAgentContributor();
   const [row] = await db
@@ -50,6 +51,9 @@ async function recordContribution(
       method,
       payloadHash: contentHash(payload),
       sessionId,
+      // The receipt that joins this write to the turn — and through
+      // investigation_turns, to the human whose question produced it.
+      turnId,
     })
     .returning({ id: schema.contributions.id });
   return row.id;
@@ -66,6 +70,7 @@ export type AddSourceInput = {
   guarantees?: Record<string, unknown>;
   retrieval?: Record<string, unknown>;
   sessionId?: string;
+  turnId?: string;
 };
 
 // Content-addressed source: the id is a hash of the stored text, so the same
@@ -75,7 +80,8 @@ export async function addSource(input: AddSourceInput): Promise<string> {
   const contributionId = await recordContribution(
     "fetch_source@1",
     input.text,
-    input.sessionId
+    input.sessionId,
+    input.turnId
   );
   await db
     .insert(schema.sources)
@@ -117,6 +123,7 @@ export type RecordClaimInput = {
   spanEnd?: number;
   descriptors?: Record<string, unknown>;
   sessionId?: string;
+  turnId?: string;
 };
 
 export type RecordClaimResult = {
@@ -149,7 +156,8 @@ export async function recordClaim(
     const contributionId = await recordContribution(
       "record_claim@1",
       normalized,
-      input.sessionId
+      input.sessionId,
+      input.turnId
     );
     await db
       .insert(schema.claims)
@@ -168,7 +176,8 @@ export async function recordClaim(
   const mentionContribution = await recordContribution(
     "record_claim@1",
     input.quote,
-    input.sessionId
+    input.sessionId,
+    input.turnId
   );
   await db.insert(schema.mentions).values({
     claimId: canonicalId,
@@ -222,6 +231,7 @@ export async function recordRelation(input: {
   type: RelationType;
   rationale?: string;
   sessionId?: string;
+  turnId?: string;
 }): Promise<{ ok: boolean; error?: string }> {
   // Validate both endpoints exist so a bad claim id returns graceful feedback
   // to the model instead of a foreign-key crash.
@@ -244,7 +254,8 @@ export async function recordRelation(input: {
   const contributionId = await recordContribution(
     "record_relation@1",
     input.fromClaimId + input.type + input.toClaimId,
-    input.sessionId
+    input.sessionId,
+    input.turnId
   );
   await db.insert(schema.relations).values({
     fromClaimId: input.fromClaimId,
@@ -262,6 +273,7 @@ export async function recordCrux(input: {
   question: string;
   implication?: string;
   sessionId?: string;
+  turnId?: string;
 }): Promise<{ ok: boolean; error?: string; cruxId?: string }> {
   const rows = await db
     .select({ id: schema.claims.canonicalId })
@@ -276,7 +288,8 @@ export async function recordCrux(input: {
   const contributionId = await recordContribution(
     "record_crux@1",
     input.question,
-    input.sessionId
+    input.sessionId,
+    input.turnId
   );
   const [inserted] = await db
     .insert(schema.cruxes)
@@ -296,11 +309,13 @@ export async function recordHypothesis(input: {
   statement: string;
   answerBearing?: string;
   sessionId?: string;
+  turnId?: string;
 }): Promise<{ id: string }> {
   const contributionId = await recordContribution(
     "record_hypothesis@1",
     input.statement,
-    input.sessionId
+    input.sessionId,
+    input.turnId
   );
   const [row] = await db
     .insert(schema.hypotheses)
@@ -322,6 +337,7 @@ export async function linkClaimToHypothesis(input: {
   polarity: "supports" | "undermines";
   diagnosticity?: number;
   sessionId?: string;
+  turnId?: string;
 }): Promise<{ ok: boolean; error?: string }> {
   const claim = await db
     .select({ id: schema.claims.canonicalId })
@@ -343,7 +359,8 @@ export async function linkClaimToHypothesis(input: {
   const contributionId = await recordContribution(
     "link_hypothesis@1",
     input.claimId + input.hypothesisId,
-    input.sessionId
+    input.sessionId,
+    input.turnId
   );
   await db.insert(schema.hypothesisLinks).values({
     hypothesisId: input.hypothesisId,
