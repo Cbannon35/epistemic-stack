@@ -6,6 +6,7 @@ import { AgentChat } from "@/app/_components/agent-chat";
 import { RoomTicker } from "@/app/_components/awareness/ticker";
 import { graphBus } from "@/app/_components/graph/graph-bus";
 import { GraphPanel } from "@/app/_components/graph-panel";
+import { ShortcutOverlay } from "@/app/_components/onboarding/shortcut-overlay";
 import { usePeopleState } from "@/app/_components/people/people-bus";
 import { useRoom } from "@/app/_components/room-provider";
 import { dedupeByUser } from "@/lib/realtime/types";
@@ -28,8 +29,10 @@ export function Workspace() {
   const { channel } = useRoom();
   const { setView } = channel;
 
-  // Clicking a tool card in the chat always reveals the graph it points into.
+  // Clicking a tool card in the chat always reveals the graph it points into,
+  // and the chat's Delegate button reveals the dock that lives on the graph.
   useEffect(() => graphBus.on("focusNode", () => setGraphOpen(true)), []);
+  useEffect(() => graphBus.on("openDelegate", () => setGraphOpen(true)), []);
 
   // Following someone who's in the graph pane reveals the graph here too.
   const { follow } = usePeopleState();
@@ -113,6 +116,7 @@ export function Workspace() {
       className={`flex h-dvh w-full ${dragging ? "select-none" : ""}`}
       ref={containerRef}
     >
+      <ShortcutOverlay />
       <div className="flex h-full min-w-0 flex-1 flex-col">
         <AgentChat
           headerActions={

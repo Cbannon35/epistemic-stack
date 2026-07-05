@@ -2,6 +2,11 @@
 
 import { PersonCard } from "@/app/_components/people/person-card";
 import { useRoom } from "@/app/_components/room-provider";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { initialsFor } from "@/lib/realtime/color";
 import { dedupeByUser, type PresenceMeta } from "@/lib/realtime/types";
 
@@ -34,14 +39,52 @@ export function AvatarDot({
   );
 }
 
-function Overflow({ count }: { count: number }) {
-  if (count <= 0) {
+// The "+N" chip opens the full roster (everyone, not just the hidden tail).
+function Overflow({
+  people,
+  size = "size-5",
+  text = "text-[9px]",
+}: {
+  people: AvatarPerson[];
+  size?: string;
+  text?: string;
+}) {
+  const overflow = people.length - MAX_SHOWN;
+  if (overflow <= 0) {
     return null;
   }
   return (
-    <span className="flex size-5 items-center justify-center rounded-full bg-muted font-medium text-[9px] text-muted-foreground">
-      +{count}
-    </span>
+    <Popover>
+      <PopoverTrigger asChild>
+        <button
+          aria-label={`${overflow} more ${overflow === 1 ? "person" : "people"}`}
+          className={`flex ${size} cursor-pointer items-center justify-center rounded-full bg-muted font-medium ${text} text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground`}
+          type="button"
+        >
+          +{overflow}
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-52 p-1.5">
+        <div className="max-h-56 space-y-0.5 overflow-y-auto">
+          {people.map((person) => (
+            <div
+              className="flex items-center gap-2 rounded-md px-1.5 py-1 text-xs"
+              key={person.userId}
+            >
+              <span
+                className="flex size-4 shrink-0 items-center justify-center rounded-full font-medium text-[8px] text-white"
+                style={{ backgroundColor: person.color }}
+              >
+                {initialsFor(person.displayName)}
+              </span>
+              <span className="truncate text-foreground">
+                {person.title ?? person.displayName}
+              </span>
+            </div>
+          ))}
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 }
 
@@ -68,7 +111,7 @@ export function AvatarStack({
           text={text}
         />
       ))}
-      <Overflow count={people.length - shown.length} />
+      <Overflow people={people} size={size} text={text} />
     </span>
   );
 }
@@ -87,6 +130,15 @@ export function PresenceAvatars({ view }: { view?: PresenceMeta["view"] }) {
     return null;
   }
   const shown = peers.slice(0, MAX_SHOWN);
+  const asPerson = (peer: (typeof peers)[number]): AvatarPerson => ({
+    userId: peer.userId,
+    displayName: peer.displayName,
+    color: peer.color,
+    title:
+      peer.activity === "viewing"
+        ? peer.displayName
+        : `${peer.displayName} · ${peer.activity}`,
+  });
   return (
     <span className="fade-in -space-x-1 flex items-center">
       {shown.map((peer) => (
@@ -99,21 +151,11 @@ export function PresenceAvatars({ view }: { view?: PresenceMeta["view"] }) {
             className="rounded-full outline-none transition-transform duration-150 focus-visible:ring-1 focus-visible:ring-ring active:scale-95"
             type="button"
           >
-            <AvatarDot
-              person={{
-                userId: peer.userId,
-                displayName: peer.displayName,
-                color: peer.color,
-                title:
-                  peer.activity === "viewing"
-                    ? peer.displayName
-                    : `${peer.displayName} · ${peer.activity}`,
-              }}
-            />
+            <AvatarDot person={asPerson(peer)} />
           </button>
         </PersonCard>
       ))}
-      <Overflow count={peers.length - shown.length} />
+      <Overflow people={peers.map(asPerson)} />
     </span>
   );
 }

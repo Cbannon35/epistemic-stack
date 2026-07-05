@@ -71,7 +71,7 @@ export type ReceiptRecord = {
 
 export type NodeReceipts = {
   nodeId: string;
-  kind: "claim" | "source" | "hypothesis" | "crux";
+  kind: "claim" | "source" | "hypothesis" | "crux" | "relation";
   label: string;
   created: ReceiptRecord | null;
   /** Claims only: the extraction receipt behind each source mention. */

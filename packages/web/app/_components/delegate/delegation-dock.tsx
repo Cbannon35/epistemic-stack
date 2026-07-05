@@ -1,11 +1,12 @@
 "use client";
 
 import { MicroscopeIcon, XIcon } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type {
   DelegationsApi,
   LiveLine,
 } from "@/app/_components/delegate/use-delegations";
+import { graphBus } from "@/app/_components/graph/graph-bus";
 import { useRoom } from "@/app/_components/room-provider";
 import type { DelegationSummary } from "@/lib/delegate/types";
 import { DELEGATE_COLOR } from "@/lib/realtime/color";
@@ -77,7 +78,19 @@ export function DelegationDock({
   const { me, roomId } = useRoom();
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState("");
+  const inputRef = useRef<HTMLInputElement | null>(null);
   const { rows, live, pending, error, start, cancel } = delegations;
+
+  // The chat header's Delegate button lands here: open with the composer ready.
+  useEffect(
+    () =>
+      graphBus.on("openDelegate", () => {
+        setOpen(true);
+        // Wait for the panel to mount before grabbing focus.
+        requestAnimationFrame(() => inputRef.current?.focus());
+      }),
+    []
+  );
 
   // Presence of the dock follows the room: a fresh, unsent chat has nothing to
   // delegate against yet.
@@ -185,6 +198,7 @@ export function DelegationDock({
                 }
               }}
               placeholder="eve, investigate…"
+              ref={inputRef}
               type="text"
               value={draft}
             />

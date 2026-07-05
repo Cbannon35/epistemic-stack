@@ -425,6 +425,49 @@ export async function getNodeReceipts(
     };
   }
 
+  // Relation edges: the assertion is the EDGE itself ("A supports B"), so its
+  // label quotes both claims around the relation type.
+  if (nodeId.startsWith("rel:")) {
+    const [relation] = await db
+      .select()
+      .from(schema.relations)
+      .where(eq(schema.relations.id, nodeId.slice(4)))
+      .limit(1);
+    if (!relation) {
+      return null;
+    }
+    const clipClaim = (text: string | undefined) =>
+      text
+        ? `“${text.length > 90 ? `${text.slice(0, 90)}…` : text}”`
+        : "a claim";
+    const [claims, receipts, threads] = await Promise.all([
+      db
+        .select({
+          canonicalId: schema.claims.canonicalId,
+          text: schema.claims.text,
+        })
+        .from(schema.claims)
+        .where(
+          inArray(schema.claims.canonicalId, [
+            relation.fromClaimId,
+            relation.toClaimId,
+          ])
+        ),
+      loadReceipts([relation.contributionId]),
+      challengeThreadsFor({ kind: "relation", id: relation.id }),
+    ]);
+    const textOf = new Map(claims.map((c) => [c.canonicalId, c.text]));
+    return {
+      nodeId,
+      kind: "relation",
+      label: `${clipClaim(textOf.get(relation.fromClaimId))} ${relation.type.replace(/_/g, " ")} ${clipClaim(textOf.get(relation.toClaimId))}`,
+      created: receipts.get(relation.contributionId) ?? null,
+      mentions: [],
+      threads,
+      state: stateOf(threads),
+    };
+  }
+
   if (nodeId.startsWith("hyp:")) {
     const [hypothesis] = await db
       .select()

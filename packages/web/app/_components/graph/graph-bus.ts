@@ -12,6 +12,8 @@ type GraphBusEvents = {
     cruxes: number;
     hypotheses: number;
   };
+  /** Reveal the graph pane and open the investigations dock composer. */
+  openDelegate: Record<string, never>;
 };
 
 type AnyHandler = (payload: never) => void;

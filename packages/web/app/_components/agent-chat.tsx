@@ -1,7 +1,7 @@
 "use client";
 
 import type { EveMessage } from "eve/client";
-import { GitForkIcon, SearchIcon } from "lucide-react";
+import { GitForkIcon, MicroscopeIcon } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { type FormEvent, type ReactNode, useRef } from "react";
 import { CatchUpDigest } from "@/app/_components/awareness/digest-card";
@@ -17,6 +17,8 @@ import {
   useCommentsProvider,
 } from "@/app/_components/comments/use-comments";
 import { RelatedPriorWork } from "@/app/_components/commons/related-work";
+import { graphBus } from "@/app/_components/graph/graph-bus";
+import { EmptyRoomState } from "@/app/_components/onboarding/room-hints";
 import { PresenceAvatars } from "@/app/_components/presence/presence-avatars";
 import { useRoom } from "@/app/_components/room-provider";
 import { NodeMentionPicker } from "@/app/_components/weave/node-mention";
@@ -88,6 +90,17 @@ export function AgentChat({ headerActions }: { headerActions?: ReactNode }) {
             {room.session.sessionId ? (
               <button
                 className="inline-flex items-center gap-1.5 rounded-md border border-border/60 px-2 py-1 text-muted-foreground text-xs transition-[background-color,border-color,color,transform] duration-150 hover:bg-muted hover:text-foreground active:scale-[0.97] active:bg-muted"
+                onClick={() => graphBus.emit("openDelegate", {})}
+                title="Assign eve a background sub-investigation — she works the graph while you keep talking"
+                type="button"
+              >
+                <MicroscopeIcon className="size-3.5" />
+                Delegate
+              </button>
+            ) : null}
+            {room.session.sessionId ? (
+              <button
+                className="inline-flex items-center gap-1.5 rounded-md border border-border/60 px-2 py-1 text-muted-foreground text-xs transition-[background-color,border-color,color,transform] duration-150 hover:bg-muted hover:text-foreground active:scale-[0.97] active:bg-muted"
                 onClick={() =>
                   router.push(
                     `/?fork=${encodeURIComponent(room.session.sessionId as string)}`
@@ -113,25 +126,9 @@ export function AgentChat({ headerActions }: { headerActions?: ReactNode }) {
         <Conversation className="min-h-0 flex-1">
           <ConversationContent className="mx-auto w-full max-w-3xl">
             {isEmpty ? (
-              <ConversationEmptyState
-                description={
-                  room.forkFrom
-                    ? "This branch starts from the parent's claim graph — ask where to take it next."
-                    : "Ask a contested, settled, or everyday question — I'll build a sourced claim graph."
-                }
-                icon={
-                  room.forkFrom ? (
-                    <GitForkIcon className="size-5" />
-                  ) : (
-                    <SearchIcon className="size-5" />
-                  )
-                }
-                title={
-                  room.forkFrom
-                    ? "Fork an investigation"
-                    : "Start an investigation"
-                }
-              />
+              <ConversationEmptyState>
+                <EmptyRoomState forked={Boolean(room.forkFrom)} />
+              </ConversationEmptyState>
             ) : (
               messages.map((m) => {
                 const author = authorOf(m);
