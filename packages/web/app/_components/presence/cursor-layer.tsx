@@ -4,6 +4,7 @@ import { useReactFlow, useStoreApi } from "@xyflow/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DelegationDock } from "@/app/_components/delegate/delegation-dock";
 import { useDelegations } from "@/app/_components/delegate/use-delegations";
+import { FollowPill, useFollowCamera } from "@/app/_components/people/follow";
 import {
   type CursorRefs,
   RemoteCursor,
@@ -117,6 +118,9 @@ export function CursorLayer() {
   const delegations = useDelegations(eveDriver);
   const delegationsRef = useRef(delegations);
   delegationsRef.current = delegations;
+
+  // Person-follow: camera shadows a teammate's cursor (people-bus state).
+  const followTarget = useFollowCamera();
 
   const registerRefs = useCallback(
     (id: string, refs: Partial<CursorRefs>) => {
@@ -474,6 +478,7 @@ export function CursorLayer() {
         />
       ))}
       <DelegationDock delegations={delegations} />
+      <FollowPill target={followTarget} />
       <TourPill
         onFollow={tour.follow}
         onStop={tour.stop}

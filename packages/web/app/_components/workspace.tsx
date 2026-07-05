@@ -5,7 +5,9 @@ import { useEffect, useRef, useState } from "react";
 import { AgentChat } from "@/app/_components/agent-chat";
 import { graphBus } from "@/app/_components/graph/graph-bus";
 import { GraphPanel } from "@/app/_components/graph-panel";
+import { usePeopleState } from "@/app/_components/people/people-bus";
 import { useRoom } from "@/app/_components/room-provider";
+import { dedupeByUser } from "@/lib/realtime/types";
 
 const MIN_CHAT_PX = 380;
 const MIN_GRAPH_PX = 340;
@@ -27,6 +29,21 @@ export function Workspace() {
 
   // Clicking a tool card in the chat always reveals the graph it points into.
   useEffect(() => graphBus.on("focusNode", () => setGraphOpen(true)), []);
+
+  // Following someone who's in the graph pane reveals the graph here too.
+  const { follow } = usePeopleState();
+  const peers = channel.peers;
+  useEffect(() => {
+    if (!follow) {
+      return;
+    }
+    const person = dedupeByUser(peers.values()).find(
+      (p) => p.userId === follow.userId
+    );
+    if (person?.view === "graph") {
+      setGraphOpen(true);
+    }
+  }, [follow, peers]);
 
   // Your avatar follows your pointer between panes (chat header ↔ graph
   // toolbar). Closing the graph puts you back in chat.
