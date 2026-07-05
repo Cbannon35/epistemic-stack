@@ -2,6 +2,8 @@
 
 import { useReactFlow, useStoreApi } from "@xyflow/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { DelegationDock } from "@/app/_components/delegate/delegation-dock";
+import { useDelegations } from "@/app/_components/delegate/use-delegations";
 import {
   type CursorRefs,
   RemoteCursor,
@@ -9,7 +11,7 @@ import {
 import { TourPill } from "@/app/_components/presence/tour-pill";
 import { type EveDriver, useTour } from "@/app/_components/presence/use-tour";
 import { useRoom } from "@/app/_components/room-provider";
-import { EVE_COLOR } from "@/lib/realtime/color";
+import { DELEGATE_COLOR, EVE_COLOR } from "@/lib/realtime/color";
 import { isEveCursorId } from "@/lib/realtime/types";
 import { throttle } from "@/lib/throttle";
 
@@ -110,6 +112,11 @@ export function CursorLayer() {
   const tour = useTour(eveDriver);
   const tourRef = useRef(tour);
   tourRef.current = tour;
+
+  // Delegated investigations ride the same eve-cursor registry.
+  const delegations = useDelegations(eveDriver);
+  const delegationsRef = useRef(delegations);
+  delegationsRef.current = delegations;
 
   const registerRefs = useCallback(
     (id: string, refs: Partial<CursorRefs>) => {
@@ -324,6 +331,26 @@ export function CursorLayer() {
 
   const commitChat = () => {
     const text = chatText.trim();
+    // "@eve investigate <brief>" delegates a background run (vs. a question,
+    // which asks for an answer or a tour). The verb disambiguates the intent.
+    const delegated = text.match(/^@eve\s+investigate\s+(.+)/is);
+    if (delegated) {
+      closeChat(true);
+      const own = ownPosRef.current;
+      const pane = storeApi.getState().domNode;
+      const rect = pane?.getBoundingClientRect();
+      const origin =
+        own && rect
+          ? rf.screenToFlowPosition({
+              x: own.x + rect.left,
+              y: own.y + rect.top,
+            })
+          : undefined;
+      delegationsRef.current.start(delegated[1], origin).catch(() => {
+        // start() surfaces its own error state in the dock.
+      });
+      return;
+    }
     if (text.startsWith("@eve")) {
       const question = text.replace(/^@eve\s*/, "");
       closeChat(true);
@@ -437,6 +464,16 @@ export function CursorLayer() {
           register={registerRefs}
         />
       ))}
+      {delegations.cursors.map((id) => (
+        <RemoteCursor
+          color={DELEGATE_COLOR}
+          displayName="eve · investigating"
+          id={id}
+          key={id}
+          register={registerRefs}
+        />
+      ))}
+      <DelegationDock delegations={delegations} />
       <TourPill
         onFollow={tour.follow}
         onStop={tour.stop}

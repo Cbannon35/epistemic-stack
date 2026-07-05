@@ -24,6 +24,9 @@ export function colorForUser(userId: string): string {
 
 export const EVE_COLOR = "#7c3aed";
 
+/** Delegated-investigation eve cursors: kin to eve's violet, clearly not it. */
+export const DELEGATE_COLOR = "#c026d3";
+
 export function initialsFor(displayName: string): string {
   const parts = displayName.split(/[\s._-]+/).filter(Boolean);
   if (parts.length === 0) {
