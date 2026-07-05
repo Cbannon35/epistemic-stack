@@ -344,6 +344,9 @@ export function useDelegations(eve: EveDriver): DelegationsApi {
         // Dock refresh is best-effort; broadcasts carry the live view.
       });
 
+      // Let React commit the new cursor before the first beat, so the plan
+      // narration lands in a mounted bubble instead of a null ref.
+      await new Promise((r) => setTimeout(r, 50));
       await playBeats(advance.delegationId, advance.beats, run);
       while (!(advance.done || run.cancelled)) {
         working(advance.delegationId, run, "working on it…");

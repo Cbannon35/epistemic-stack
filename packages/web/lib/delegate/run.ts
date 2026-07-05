@@ -239,14 +239,27 @@ export async function stepDelegation(input: {
   }) as DelegationState;
   const priorSteps = (row.steps ?? []) as DelegationLogEntry[];
 
-  if (row.phase === "research") {
-    return await researchPhase(row.id, state, priorSteps);
+  // Phase failures mark the row HERE — past the delegator check — so a
+  // foreign caller's rejected request can't error someone else's run.
+  try {
+    if (row.phase === "research") {
+      return await researchPhase(row.id, state, priorSteps);
+    }
+    return await synthesizePhase(
+      {
+        id: row.id,
+        sessionId: row.sessionId,
+        delegatorId: row.delegatorId,
+        brief: row.brief,
+        plan: row.plan,
+      },
+      state,
+      priorSteps
+    );
+  } catch (error) {
+    await markDelegationError(row.id);
+    throw error;
   }
-  return await synthesizePhase(
-    { id: row.id, sessionId: row.sessionId, brief: row.brief, plan: row.plan },
-    state,
-    priorSteps
-  );
 }
 
 async function researchPhase(
@@ -360,7 +373,13 @@ function clip(text: string, n = 90): string {
 }
 
 async function synthesizePhase(
-  row: { id: string; sessionId: string; brief: string; plan: string | null },
+  row: {
+    id: string;
+    sessionId: string;
+    delegatorId: string;
+    brief: string;
+    plan: string | null;
+  },
   state: DelegationState,
   priorSteps: DelegationLogEntry[]
 ): Promise<DelegationAdvance> {
@@ -437,6 +456,7 @@ async function synthesizePhase(
         retrieval: {
           operator: "delegated_investigation@1",
           delegationId: row.id,
+          delegatorId: row.delegatorId,
           query: finding.query,
         },
         sessionId: row.sessionId,

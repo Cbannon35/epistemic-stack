@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { markDelegationError, stepDelegation } from "@/lib/delegate/run";
+import { stepDelegation } from "@/lib/delegate/run";
 import { createClient } from "@/lib/supabase/server";
 
 // Advance a delegated run one phase (research → synthesize). Driven by the
@@ -30,7 +30,7 @@ export async function POST(request: Request) {
     });
     return NextResponse.json(advance);
   } catch (error) {
-    await markDelegationError(delegationId);
+    // Phase failures already marked the row inside stepDelegation.
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "step failed" },
       { status: 500 }
