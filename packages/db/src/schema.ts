@@ -364,3 +364,33 @@ export const lenses = pgTable('lenses', {
     .notNull()
     .references(() => contributions.id),
 })
+
+// ── delegated investigations ─────────────────────────────────────────────────
+// A room member assigns eve a bounded background sub-investigation. This is the
+// app-side operational record (like investigations/comments, mutable status) —
+// the commons receipts are the contributions the run writes, attributed to the
+// eve agent contributor with session_id = the room. The row ties those receipts
+// back to WHO delegated the work and what they asked for.
+export const delegations = pgTable(
+  'delegations',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    sessionId: text('session_id')
+      .notNull()
+      .references(() => investigations.id),
+    delegatorId: uuid('delegator_id')
+      .notNull()
+      .references(() => contributors.id),
+    brief: text('brief').notNull(), // what eve was asked to investigate
+    status: text('status').notNull().default('running'), // 'running' | 'completed' | 'cancelled' | 'error'
+    phase: text('phase').notNull().default('plan'), // next phase to run: 'research' | 'synthesize' | 'done'
+    plan: text('plan'), // eve's stated plan of attack
+    state: jsonb('state'), // phase-machine scratch (examine list, web findings)
+    steps: jsonb('steps'), // append-only narration log [{kind, narration, at}]
+    summary: text('summary'), // completion write-up
+    output: jsonb('output'), // ids of everything written {sources, claims, relations, cruxes, hypotheses, links}
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('delegations_session_idx').on(t.sessionId)],
+)

@@ -1,7 +1,6 @@
 "use client";
 
 import { SparklesIcon } from "lucide-react";
-import { EVE_COLOR } from "@/lib/realtime/color";
 import { isEveCursorId } from "@/lib/realtime/types";
 
 // Presentational cursor shell. The layer's rAF loop positions the root div
@@ -31,9 +30,10 @@ export function RemoteCursor({
       ref={(el) => register(id, { root: el })}
     >
       {isEve ? (
+        // Eve variants (tour violet, delegate fuchsia) differ only by `color`.
         <span
           className="eve-halo flex size-6 items-center justify-center rounded-full text-white shadow-[var(--shadow-float)]"
-          style={{ backgroundColor: EVE_COLOR }}
+          style={{ backgroundColor: color }}
         >
           <SparklesIcon className="size-3.5" />
         </span>
@@ -57,7 +57,7 @@ export function RemoteCursor({
       <div className="mt-1 ml-3 flex flex-col items-start gap-1">
         <span
           className="whitespace-nowrap rounded-full px-1.5 py-0.5 font-medium text-[10px] text-white leading-none"
-          style={{ backgroundColor: isEve ? EVE_COLOR : color }}
+          style={{ backgroundColor: color }}
         >
           {displayName}
         </span>
@@ -66,7 +66,7 @@ export function RemoteCursor({
             isEve ? "max-w-72" : "max-w-56"
           } whitespace-pre-wrap rounded-lg rounded-tl-sm border bg-background/95 px-2 py-1 text-foreground text-xs shadow-[var(--shadow-float)] backdrop-blur`}
           ref={(el) => register(id, { bubble: el })}
-          style={{ borderColor: isEve ? EVE_COLOR : color }}
+          style={{ borderColor: color }}
         />
       </div>
     </div>

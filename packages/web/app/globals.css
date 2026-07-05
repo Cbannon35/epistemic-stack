@@ -505,6 +505,14 @@ textarea:focus-visible {
   border-radius: 10px;
 }
 
+/* The node a delegated eve run is examining (DELEGATE_COLOR, dashed so it
+   reads apart from a concurrent tour's solid ring). */
+.react-flow__node.delegate-ring {
+  outline: 2px dashed #c026d3;
+  outline-offset: 4px;
+  border-radius: 10px;
+}
+
 /* ── comment highlights (CSS Custom Highlight API) ─────────────────────────
    One name per palette hue (lib/realtime/color.ts HUES) — a thread's
    highlight wears its author's color, matching their avatar and cursor. */

@@ -104,6 +104,40 @@ export type TourEndEvent = {
   ts: number;
 };
 
+// ── delegated investigations ────────────────────────────────────────────────
+// A member assigned eve a background sub-investigation; the delegating client
+// hosts the run and broadcasts its progress (same shape as tours).
+
+export type DelegationStartEvent = {
+  delegationId: string;
+  hostId: string;
+  hostName: string;
+  brief: string;
+  ts: number;
+};
+
+export type DelegationStepEvent = {
+  delegationId: string;
+  hostId: string;
+  kind: "plan" | "examine" | "research" | "record" | "conclusion";
+  index: number;
+  total: number;
+  /** null for plan/research/conclusion. Receivers resolve locally; x/y is fallback. */
+  nodeId: string | null;
+  narration: string;
+  x: number;
+  y: number;
+  ts: number;
+};
+
+export type DelegationEndEvent = {
+  delegationId: string;
+  hostId: string;
+  reason: "complete" | "cancelled" | "error";
+  summary?: string;
+  ts: number;
+};
+
 /** Broadcast "comments:changed" — a comment was added/updated; refetch. */
 export type CommentsChangedEvent = { sessionId: string };
 
@@ -123,6 +157,9 @@ export type RoomEventPayloads = {
   "tour-start": TourStartEvent;
   "tour-step": TourStepEvent;
   "tour-end": TourEndEvent;
+  "delegation-start": DelegationStartEvent;
+  "delegation-step": DelegationStepEvent;
+  "delegation-end": DelegationEndEvent;
   "turn:pending": TurnPendingEvent;
   "turn:author": TurnAuthorEvent;
   "comments:changed": CommentsChangedEvent;
@@ -136,6 +173,9 @@ export const ROOM_EVENTS: readonly RoomEventName[] = [
   "tour-start",
   "tour-step",
   "tour-end",
+  "delegation-start",
+  "delegation-step",
+  "delegation-end",
   "turn:pending",
   "turn:author",
   "comments:changed",
@@ -147,3 +187,9 @@ export const roomTopic = (roomId: string) => `room:${roomId}`;
 export const EVE_CURSOR_PREFIX = "eve:";
 export const eveCursorId = (tourId: string) => `${EVE_CURSOR_PREFIX}${tourId}`;
 export const isEveCursorId = (id: string) => id.startsWith(EVE_CURSOR_PREFIX);
+
+/** Delegated-investigation cursors: still eve cursors (glide, sparkle), but a
+ * distinct namespace so the layer can style them apart from tour cursors. */
+export const DELEGATE_CURSOR_PREFIX = "eve:dg:";
+export const delegateCursorId = (delegationId: string) =>
+  `${DELEGATE_CURSOR_PREFIX}${delegationId}`;
