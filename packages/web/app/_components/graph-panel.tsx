@@ -15,6 +15,8 @@ import {
   forceLink,
   forceManyBody,
   forceSimulation,
+  forceX,
+  forceY,
 } from "d3-force";
 import {
   ListTreeIcon,
@@ -69,21 +71,27 @@ function layout(data: GraphData): Map<string, { x: number; y: number }> {
     target: e.target,
   }));
   const simulation = forceSimulation(sim)
-    // Hypotheses repel harder so their clusters spread out.
+    // Hypotheses repel harder so their clusters spread out. Pill nodes are
+    // wide, text-bearing shapes — spacing tuned so labels don't overlap.
     .force(
       "charge",
       forceManyBody().strength((d) =>
-        (d as { kind: string }).kind === "hypothesis" ? -1400 : -520
+        (d as { kind: string }).kind === "hypothesis" ? -1600 : -700
       )
     )
     .force(
       "link",
       forceLink(links as any)
         .id((d: any) => d.id)
-        .distance(115)
+        .distance(175)
     )
     .force("center", forceCenter(0, 0))
-    .force("collide", forceCollide(74))
+    // A weak pull toward the origin keeps disconnected components (e.g. a
+    // hypothesis with no recorded links yet) from drifting to the horizon
+    // and forcing the camera to zoom way out.
+    .force("x", forceX(0).strength(0.06))
+    .force("y", forceY(0).strength(0.06))
+    .force("collide", forceCollide(115))
     .stop();
   for (let i = 0; i < 320; i++) {
     simulation.tick();
@@ -602,6 +610,16 @@ export function GraphPanel({
   useEffect(() => {
     graphBus.emit("commonsScope", { active: commonsMode });
   }, [commonsMode]);
+
+  // Refit the camera when the canvas or the visible set changes shape —
+  // entering/leaving fullscreen, scope switches, and detail-level steps all
+  // leave the old viewport pointing at the wrong extent.
+  useEffect(() => {
+    const t = setTimeout(() => {
+      rfRef.current?.fitView({ padding: 0.15, duration: 500 });
+    }, 60);
+    return () => clearTimeout(t);
+  }, [full, commonsMode, detailLevel]);
 
   // The overview card is headed by the investigation's question — the first
   // thing a member asked — falling back to the leading hypothesis.

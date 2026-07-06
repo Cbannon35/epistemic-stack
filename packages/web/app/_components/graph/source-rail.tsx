@@ -71,25 +71,31 @@ function SourceCard({
   const meta = useSourceMeta(url);
   const host = url ? hostOf(url) : null;
   const study = Boolean(node.detail?.peer_reviewed);
+  // og:image urls 404 or block hotlinking often enough that a broken image
+  // must collapse into the letter-tile header, not an empty white box.
+  const [imageBroken, setImageBroken] = useState(false);
+  const image = !imageBroken && meta?.image ? meta.image : null;
 
   return (
     <button
-      className="group w-full overflow-hidden rounded-lg border border-border/60 bg-background text-left shadow-[var(--shadow-card)] transition-[border-color,box-shadow] duration-150 hover:border-border hover:shadow-[var(--shadow-float)]"
+      className="group w-full shrink-0 overflow-hidden rounded-lg border border-border/60 bg-background text-left shadow-[var(--shadow-card)] transition-[border-color,box-shadow] duration-150 hover:border-border hover:shadow-[var(--shadow-float)]"
+      data-source-card
       onClick={() => onPreview(node)}
       type="button"
     >
-      {meta?.image ? (
+      {image ? (
         // biome-ignore lint/performance/noImgElement: og-images come from arbitrary source domains — next/image would need a remotePatterns allowlist per host
         <img
           alt=""
-          className="h-20 w-full object-cover"
+          className="h-20 w-full border-border/40 border-b object-cover"
           height={80}
           loading="lazy"
-          src={meta.image}
+          onError={() => setImageBroken(true)}
+          src={image}
           width={224}
         />
       ) : (
-        <div className="flex h-10 items-center gap-2 border-border/40 border-b bg-muted/40 px-2.5">
+        <div className="flex h-9 items-center gap-2 border-border/40 border-b bg-muted/40 px-2.5">
           <span className="flex size-5 shrink-0 items-center justify-center rounded bg-muted font-semibold text-[10px] text-muted-foreground uppercase">
             {(host ?? "?").slice(0, 1)}
           </span>
