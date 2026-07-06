@@ -4,7 +4,7 @@ import { useSyncExternalStore } from "react";
 
 // Module store for the people layer, bridging surfaces that don't share a
 // tree: person cards (chat header / graph toolbar), the follow camera (inside
-// ReactFlow), the workspace pane, and the graph panel (which owns lens state).
+// ReactFlow), the workspace pane, and the graph panel (belief compare).
 // Same singleton pattern as graph-bus, plus a snapshot for useSyncExternalStore.
 
 export type FollowTarget = { userId: string; displayName: string };
@@ -19,7 +19,6 @@ export type PeopleState = {
 
 let state: PeopleState = { follow: null, compare: null };
 const subscribers = new Set<() => void>();
-const adoptHandlers = new Set<(lensId: string) => void>();
 
 function commit(next: Partial<PeopleState>): void {
   state = { ...state, ...next };
@@ -41,18 +40,6 @@ export const peopleBus = {
   },
   setCompare(target: CompareTarget | null): void {
     commit({ compare: target });
-  },
-  /** Handled by the graph panel, which owns the active-lens state. */
-  onAdoptLens(handler: (lensId: string) => void): () => void {
-    adoptHandlers.add(handler);
-    return () => {
-      adoptHandlers.delete(handler);
-    };
-  },
-  adoptLens(lensId: string): void {
-    for (const handler of adoptHandlers) {
-      handler(lensId);
-    }
   },
 };
 

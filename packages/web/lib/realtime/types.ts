@@ -24,10 +24,6 @@ export type PresenceMeta = {
   activity: "viewing" | "chatting" | "touring";
   /** Which pane this member's pointer is over — avatars follow it. */
   view: "chat" | "graph";
-  /** The lens this member reads the graph through — person cards show it and
-   * offer one-click adoption. Absent on connections predating the field. */
-  lensId?: string;
-  lensName?: string;
   /** Stable per connection — avatar sort order. */
   joinedAt: number;
   /** Bumped on every re-track — freshest-meta dedup. */
@@ -154,24 +150,6 @@ export type PingEvent = {
   ts: number;
 };
 
-/** Broadcast "view-shared" — a member shares their current graph framing. */
-export type ViewSharedEvent = {
-  id: string;
-  clientId: string;
-  userId: string;
-  displayName: string;
-  color: string;
-  name: string;
-  filters: { sources: boolean; cruxes: boolean };
-  /** Lens applied at capture time — receivers resolve the id locally. */
-  lensId: string;
-  /** Camera as flow-space center + zoom (viewport translate is pane-size
-   * dependent; the center is the same for everyone). */
-  camera: { cx: number; cy: number; zoom: number };
-  selectedId: string | null;
-  ts: number;
-};
-
 /** Broadcast "comments:changed" — a comment was added/updated; refetch.
  * The optional fields feed the awareness ticker; refetch consumers only need
  * sessionId, so senders that can't cheaply name the action may omit them. */
@@ -235,7 +213,6 @@ export type RoomEventPayloads = {
   "delegation-step": DelegationStepEvent;
   "delegation-end": DelegationEndEvent;
   ping: PingEvent;
-  "view-shared": ViewSharedEvent;
   "turn:pending": TurnPendingEvent;
   "turn:author": TurnAuthorEvent;
   "comments:changed": CommentsChangedEvent;
@@ -259,7 +236,6 @@ export const ROOM_EVENTS: readonly RoomEventName[] = [
   "delegation-step",
   "delegation-end",
   "ping",
-  "view-shared",
   "turn:pending",
   "turn:author",
   "comments:changed",

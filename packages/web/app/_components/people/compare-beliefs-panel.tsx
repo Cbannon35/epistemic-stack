@@ -14,8 +14,6 @@ const MIN_GAP = 0.02;
 
 // Person-vs-person crux finding: both people's latest credences, ranked by
 // gap. The widest gap is the crux — the hypothesis to talk about first.
-// Sibling of the lens-diff panel: lenses compare trust rules, this compares
-// registered belief.
 export function CompareBeliefsPanel({
   target,
   onClose,

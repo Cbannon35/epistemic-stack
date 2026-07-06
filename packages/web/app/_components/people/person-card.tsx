@@ -1,12 +1,6 @@
 "use client";
 
-import {
-  ApertureIcon,
-  EyeIcon,
-  EyeOffIcon,
-  ScaleIcon,
-  SparklesIcon,
-} from "lucide-react";
+import { EyeIcon, EyeOffIcon, ScaleIcon, SparklesIcon } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { getPersonStats } from "@/app/(chat)/people-actions";
 import {
@@ -14,7 +8,6 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { RAW_LENS_ID } from "@/lib/lenses/builtins";
 import type { PresenceMeta } from "@/lib/realtime/types";
 import { peopleBus, usePeopleState } from "./people-bus";
 
@@ -44,8 +37,8 @@ function whereLabel(meta: PresenceMeta): string {
 }
 
 // The person card — one hub per teammate. Everything social hangs off it:
-// where they are, what lens they read through (adopt it), follow their
-// viewport, or line your credences up against theirs.
+// where they are, follow their viewport, or line your credences up against
+// theirs.
 export function PersonCard({
   meta,
   isSelf,
@@ -96,23 +89,6 @@ export function PersonCard({
         </div>
 
         <div className="flex flex-col gap-1.5 px-3 py-2.5 text-xs">
-          <span className="flex items-center gap-1.5 text-muted-foreground">
-            <ApertureIcon className="size-3.5 shrink-0" />
-            <span className="min-w-0 flex-1 truncate">
-              through{" "}
-              <span className="text-foreground">{meta.lensName ?? "Raw"}</span>
-            </span>
-            {isSelf ? null : (
-              <button
-                className="rounded-md px-1.5 py-0.5 text-[11px] transition-colors duration-150 hover:bg-muted hover:text-foreground"
-                onClick={() => peopleBus.adoptLens(meta.lensId ?? RAW_LENS_ID)}
-                title="Read the graph through their lens"
-                type="button"
-              >
-                Adopt
-              </button>
-            )}
-          </span>
           <span className="flex items-center gap-1.5 text-muted-foreground">
             <SparklesIcon className="size-3.5 shrink-0" />
             {stats ? (
