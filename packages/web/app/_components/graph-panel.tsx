@@ -33,10 +33,13 @@ import { GraphSearchBar } from "@/app/_components/graph/graph-search";
 import { Inspector } from "@/app/_components/graph/inspector";
 import { nodeTypes } from "@/app/_components/graph/nodes";
 import { OverviewPanel } from "@/app/_components/graph/overview-panel";
+import { SourcePreview } from "@/app/_components/graph/source-preview";
+import { SourceRail } from "@/app/_components/graph/source-rail";
 import { GraphTimeSlider } from "@/app/_components/graph/time-slider";
 import {
   EDGE_STYLE,
   type GraphData,
+  type GraphNode,
   type InspectorSubject,
 } from "@/app/_components/graph/types";
 import { JournalPanel } from "@/app/_components/journal/journal-panel";
@@ -161,6 +164,8 @@ export function GraphPanel({
   const [revealed, setRevealed] = useState<Set<string>>(new Set());
   const [showOverview, setShowOverview] = useState(false);
   const [showJournal, setShowJournal] = useState(false);
+  // A source opened in the in-page preview (rail card click).
+  const [previewSource, setPreviewSource] = useState<GraphNode | null>(null);
 
   const sigRef = useRef("");
   // Last counts per scope — same-scope growth is narrated on the ticker.
@@ -860,6 +865,18 @@ export function GraphPanel({
           data={data}
           onClose={() => setShowOverview(false)}
           question={question}
+        />
+      ) : null}
+
+      {/* Rich evidence cards ride along the overview in fullscreen. */}
+      {full && showOverview && data && !commonsMode ? (
+        <SourceRail nodes={data.nodes} onPreview={setPreviewSource} />
+      ) : null}
+
+      {previewSource ? (
+        <SourcePreview
+          node={previewSource}
+          onClose={() => setPreviewSource(null)}
         />
       ) : null}
 
