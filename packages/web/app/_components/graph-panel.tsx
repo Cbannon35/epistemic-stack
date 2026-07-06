@@ -859,15 +859,7 @@ export function GraphPanel({
       ) : null}
 
       {full ? (
-        <GraphSearchBar
-          commonsMode={commonsMode}
-          nodes={data?.nodes ?? []}
-          onExitCommons={() => {
-            // Back to this investigation's own scope and first-glance density.
-            setCommonsMode(false);
-            setDetailLevel(0);
-          }}
-        />
+        <GraphSearchBar commonsMode={commonsMode} nodes={data?.nodes ?? []} />
       ) : null}
 
       {showJournal ? (

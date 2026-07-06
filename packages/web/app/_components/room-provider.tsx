@@ -9,6 +9,7 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
+import { graphBus } from "@/app/_components/graph/graph-bus";
 import type { InvestigationRoom } from "@/app/(chat)/actions";
 import { getForkSeed } from "@/app/(chat)/actions";
 import { useLobbyPresence } from "@/hooks/use-lobby-presence";
@@ -93,7 +94,14 @@ export function RoomProvider({
   // presence, cursors — once its first send assigns an id).
   const liveRoomId = snapshot.session.sessionId ?? roomId;
   const channel = useRoomChannel(liveRoomId, identity);
-  const lobby = useLobbyPresence(liveRoomId, identity);
+  // Browsing the whole commons means you've LEFT the room as far as the
+  // sidebar is concerned — your avatar shouldn't sit on the last chat's row.
+  const [inCommons, setInCommons] = useState(false);
+  useEffect(
+    () => graphBus.on("commonsScope", ({ active }) => setInCommons(active)),
+    []
+  );
+  const lobby = useLobbyPresence(inCommons ? null : liveRoomId, identity);
 
   const { send: channelSend, on: channelOn } = channel;
 

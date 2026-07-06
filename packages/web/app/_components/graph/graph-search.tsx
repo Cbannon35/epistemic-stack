@@ -1,6 +1,6 @@
 "use client";
 
-import { SearchIcon, XIcon } from "lucide-react";
+import { SearchIcon } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { graphBus } from "./graph-bus";
 import { KIND_PILL } from "./nodes";
@@ -33,12 +33,10 @@ function kindBadge(kind: GraphNode["kind"], study: boolean) {
 export function GraphSearchBar({
   nodes,
   commonsMode,
-  onExitCommons,
 }: {
   nodes: GraphNode[];
-  /** Whole-commons scope is active — show the chip that exits it. */
+  /** Whole-commons scope — only changes the placeholder copy. */
   commonsMode: boolean;
-  onExitCommons: () => void;
 }) {
   const [query, setQuery] = useState("");
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -120,20 +118,6 @@ export function GraphSearchBar({
           ref={inputRef}
           value={query}
         />
-        {commonsMode ? (
-          <button
-            className="flex shrink-0 items-center gap-1 rounded-full border border-border/60 bg-muted px-2 py-0.5 text-[10px] text-foreground transition-colors duration-150 hover:bg-muted/70"
-            onClick={() => {
-              setQuery("");
-              onExitCommons();
-            }}
-            title="Back to this investigation's scope"
-            type="button"
-          >
-            ◈ whole commons
-            <XIcon className="size-3" />
-          </button>
-        ) : null}
       </div>
     </div>
   );
