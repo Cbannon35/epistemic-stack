@@ -672,37 +672,42 @@ export function GraphPanel({
           >
             cruxes
           </FilterButton>
-          <button
-            className={`${pillClass} border-border/60 text-muted-foreground hover:bg-muted hover:text-foreground`}
-            onClick={() => setShowAssessment((v) => !v)}
-            type="button"
-          >
-            ⚖ assessment
-          </button>
-          <button
-            className={`${pillClass} ${
-              showOverview
-                ? "border-border bg-muted text-foreground"
-                : "border-border/60 text-muted-foreground hover:bg-muted hover:text-foreground"
-            } inline-flex items-center gap-1`}
-            onClick={() => setShowOverview((v) => !v)}
-            title="Structured overview — claims, cruxes, sources, studies"
-            type="button"
-          >
-            <ListTreeIcon className="size-3" /> overview
-          </button>
-          <button
-            className={`${pillClass} ${
-              showJournal
-                ? "border-border bg-muted text-foreground"
-                : "border-border/60 text-muted-foreground hover:bg-muted hover:text-foreground"
-            } inline-flex items-center gap-1`}
-            onClick={() => setShowJournal((v) => !v)}
-            title="Investigation journal — every action eve took and why"
-            type="button"
-          >
-            <ScrollTextIcon className="size-3" /> journal
-          </button>
+          {/* Per-investigation surfaces — meaningless on the whole commons. */}
+          {commonsMode ? null : (
+            <>
+              <button
+                className={`${pillClass} border-border/60 text-muted-foreground hover:bg-muted hover:text-foreground`}
+                onClick={() => setShowAssessment((v) => !v)}
+                type="button"
+              >
+                ⚖ assessment
+              </button>
+              <button
+                className={`${pillClass} ${
+                  showOverview
+                    ? "border-border bg-muted text-foreground"
+                    : "border-border/60 text-muted-foreground hover:bg-muted hover:text-foreground"
+                } inline-flex items-center gap-1`}
+                onClick={() => setShowOverview((v) => !v)}
+                title="Structured overview — claims, cruxes, sources, studies"
+                type="button"
+              >
+                <ListTreeIcon className="size-3" /> overview
+              </button>
+              <button
+                className={`${pillClass} ${
+                  showJournal
+                    ? "border-border bg-muted text-foreground"
+                    : "border-border/60 text-muted-foreground hover:bg-muted hover:text-foreground"
+                } inline-flex items-center gap-1`}
+                onClick={() => setShowJournal((v) => !v)}
+                title="Investigation journal — every action eve took and why"
+                type="button"
+              >
+                <ScrollTextIcon className="size-3" /> journal
+              </button>
+            </>
+          )}
           {timeBounds ? (
             <button
               className={`${pillClass} ${
@@ -862,7 +867,7 @@ export function GraphPanel({
         <GraphSearchBar commonsMode={commonsMode} nodes={data?.nodes ?? []} />
       ) : null}
 
-      {showJournal ? (
+      {showJournal && !commonsMode ? (
         <JournalPanel
           investigation={investigation}
           onClose={() => setShowJournal(false)}
@@ -881,7 +886,7 @@ export function GraphPanel({
         />
       ) : null}
 
-      {showAssessment && data?.assessment ? (
+      {showAssessment && data?.assessment && !commonsMode ? (
         <AssessmentPanel
           assessment={data.assessment}
           onClose={() => setShowAssessment(false)}
