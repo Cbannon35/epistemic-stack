@@ -293,11 +293,28 @@ textarea:focus-visible {
   cursor: pointer;
 }
 
+/* Contributions ARRIVE (replay steps, tier expands, live writes) — scale +
+   fade on mount, transform/opacity only. `backwards` fill (not `both`) so the
+   hover transition regains ownership of transform once entry finishes. The
+   node's outer React Flow container is untouched. */
+@keyframes node-arrive {
+  from {
+    opacity: 0;
+    transform: scale(0.85);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
 .graph-node {
+  transform-origin: center;
   transition:
     transform 150ms var(--ease-smooth),
     box-shadow 150ms var(--ease-smooth),
     border-color 150ms var(--ease-smooth);
+  animation: node-arrive 250ms var(--ease-spring) backwards;
 }
 
 @media (hover: hover) and (pointer: fine) {

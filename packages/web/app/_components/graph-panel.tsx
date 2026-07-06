@@ -755,6 +755,23 @@ export function GraphPanel({
     return max > min ? { min, max } : null;
   }, [data]);
 
+  // Every distinct contribution moment (nodes + edges, deduped, ascending) —
+  // the replay bar's histogram and event-time playback both read this.
+  const timeline = useMemo(() => {
+    const ts = new Set<number>();
+    for (const n of data?.nodes ?? []) {
+      if (typeof n.t === "number") {
+        ts.add(n.t);
+      }
+    }
+    for (const e of data?.edges ?? []) {
+      if (typeof e.t === "number") {
+        ts.add(e.t);
+      }
+    }
+    return [...ts].sort((a, b) => a - b);
+  }, [data]);
+
   return (
     <div className="relative h-full w-full bg-background" ref={rootRef}>
       <div className="absolute top-0 right-0 left-0 z-10 flex items-center justify-between gap-2 border-border/40 border-b bg-background/80 px-3 py-2 backdrop-blur">
@@ -973,6 +990,7 @@ export function GraphPanel({
           min={timeBounds.min}
           onChange={setTimeCap}
           onClose={() => setTimeCap(null)}
+          timestamps={timeline}
           value={timeCap}
         />
       ) : null}
