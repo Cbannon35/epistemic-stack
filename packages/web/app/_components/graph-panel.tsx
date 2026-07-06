@@ -22,6 +22,7 @@ import {
   PanelRightCloseIcon,
   PlusIcon,
   RefreshCwIcon,
+  ScrollTextIcon,
   XIcon,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -37,6 +38,7 @@ import {
   type GraphData,
   type InspectorSubject,
 } from "@/app/_components/graph/types";
+import { JournalPanel } from "@/app/_components/journal/journal-panel";
 import { CompareBeliefsPanel } from "@/app/_components/people/compare-beliefs-panel";
 import { peopleBus, usePeopleState } from "@/app/_components/people/people-bus";
 import { CursorLayer } from "@/app/_components/presence/cursor-layer";
@@ -157,6 +159,7 @@ export function GraphPanel({
   const [detailLevel, setDetailLevel] = useState(0);
   const [revealed, setRevealed] = useState<Set<string>>(new Set());
   const [showOverview, setShowOverview] = useState(false);
+  const [showJournal, setShowJournal] = useState(false);
 
   const sigRef = useRef("");
   // Last counts per scope — same-scope growth is narrated on the ticker.
@@ -669,6 +672,18 @@ export function GraphPanel({
           >
             <ListTreeIcon className="size-3" /> overview
           </button>
+          <button
+            className={`${pillClass} ${
+              showJournal
+                ? "border-border bg-muted text-foreground"
+                : "border-border/60 text-muted-foreground hover:bg-muted hover:text-foreground"
+            } inline-flex items-center gap-1`}
+            onClick={() => setShowJournal((v) => !v)}
+            title="Investigation journal — every action eve took and why"
+            type="button"
+          >
+            <ScrollTextIcon className="size-3" /> journal
+          </button>
           {timeBounds ? (
             <button
               className={`${pillClass} ${
@@ -824,6 +839,13 @@ export function GraphPanel({
           data={data}
           onClose={() => setShowOverview(false)}
           question={question}
+        />
+      ) : null}
+
+      {showJournal ? (
+        <JournalPanel
+          investigation={investigation}
+          onClose={() => setShowJournal(false)}
         />
       ) : null}
 
