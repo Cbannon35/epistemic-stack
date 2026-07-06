@@ -6,10 +6,10 @@ import { graphBus } from "./graph-bus";
 import { KIND_PILL } from "./nodes";
 import type { GraphNode } from "./types";
 
-// The graph's resident search bar — bottom of the pane on every screen
-// (split and fullscreen). Matches node labels in the loaded scope; results
-// open upward; a hit flies the camera to its node. "Search the commons"
-// widens the scope and focuses this bar.
+// Fullscreen-only search: a floating bar at the bottom of the expanded
+// graph. Matches node labels in the loaded scope; results open upward; a
+// hit flies the camera to its node. "Search the commons" widens the scope
+// and focuses this bar.
 
 const MAX_HITS = 12;
 const MIN_QUERY = 2;
@@ -72,10 +72,10 @@ export function GraphSearchBar({
   const open = query.trim().length >= MIN_QUERY;
 
   return (
-    <div className="absolute right-0 bottom-0 left-0 z-10 border-border/40 border-t bg-background/85 backdrop-blur">
+    <div className="-translate-x-1/2 fade-up absolute bottom-4 left-1/2 z-10 w-[min(34rem,92%)]">
       {open ? (
-        <div className="absolute right-3 bottom-full left-3 mb-1.5">
-          <div className="fade-up mx-auto max-w-xl rounded-xl border border-border/60 bg-background/95 shadow-[var(--shadow-float)] backdrop-blur">
+        <div className="absolute right-0 bottom-full left-0 mb-1.5">
+          <div className="fade-up rounded-xl border border-border/60 bg-background/95 shadow-[var(--shadow-float)] backdrop-blur">
             {hits.length > 0 ? (
               <div className="max-h-80 overflow-y-auto overscroll-contain p-1">
                 {hits.map((n) => (
@@ -100,7 +100,7 @@ export function GraphSearchBar({
           </div>
         </div>
       ) : null}
-      <div className="mx-auto flex max-w-xl items-center gap-2 px-3 py-2">
+      <div className="flex items-center gap-2 rounded-xl border border-border/60 bg-background/90 px-3 py-2 shadow-[var(--shadow-float)] backdrop-blur">
         <SearchIcon className="size-4 shrink-0 text-muted-foreground" />
         <input
           className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"

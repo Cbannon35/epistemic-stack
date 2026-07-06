@@ -575,10 +575,20 @@ export function GraphPanel({
   );
 
   // Entering fullscreen brings the structured overview with it (the design's
-  // "Exploration Breakdown" expanded view); it stays dismissible either way.
+  // "Exploration Breakdown" expanded view) — but not on the whole commons,
+  // where a single-investigation breakdown makes no sense.
   useEffect(() => {
-    if (full) {
+    if (full && !commonsRef.current) {
       setShowOverview(true);
+    }
+  }, [full]);
+
+  // Commons scope only exists inside fullscreen search — leaving fullscreen
+  // returns to this investigation at first-glance density.
+  useEffect(() => {
+    if (!full && commonsRef.current) {
+      setCommonsMode(false);
+      setDetailLevel(0);
     }
   }, [full]);
 
@@ -778,13 +788,12 @@ export function GraphPanel({
         proOptions={{ hideAttribution: true }}
       >
         <Background />
-        {/* Lifted clear of the resident search bar along the bottom edge. */}
-        <Controls showInteractive={false} style={{ marginBottom: 48 }} />
+        <Controls showInteractive={false} />
         <CursorLayer />
       </ReactFlow>
 
       {/* Legend */}
-      <div className="absolute bottom-14 left-3 z-10 flex flex-col gap-1 rounded-md border border-border/50 bg-background/85 p-2 backdrop-blur">
+      <div className="absolute bottom-3 left-3 z-10 flex flex-col gap-1 rounded-md border border-border/50 bg-background/85 p-2 backdrop-blur">
         {LEGEND.map((l) => (
           <div
             className="flex items-center gap-1.5 text-[10px] text-muted-foreground"
@@ -805,7 +814,11 @@ export function GraphPanel({
 
       {/* Progressive disclosure — the design's bottom-center expand pill. */}
       {moreCount > 0 || detailLevel > 0 ? (
-        <div className="-translate-x-1/2 absolute bottom-14 left-1/2 z-10 flex items-center gap-1.5">
+        <div
+          className={`-translate-x-1/2 absolute left-1/2 z-10 flex items-center gap-1.5 ${
+            full ? "bottom-20" : "bottom-4"
+          }`}
+        >
           {moreCount > 0 ? (
             <button
               className="fade-in flex items-center gap-1 rounded-md border border-border/60 bg-background/90 px-2.5 py-1 text-muted-foreground text-xs shadow-[var(--shadow-card)] backdrop-blur transition-colors duration-150 hover:bg-muted hover:text-foreground"
@@ -831,7 +844,7 @@ export function GraphPanel({
         </div>
       ) : null}
 
-      {showOverview && data ? (
+      {showOverview && data && !commonsMode ? (
         <OverviewPanel
           data={data}
           onClose={() => setShowOverview(false)}
@@ -839,15 +852,17 @@ export function GraphPanel({
         />
       ) : null}
 
-      <GraphSearchBar
-        commonsMode={commonsMode}
-        nodes={data?.nodes ?? []}
-        onExitCommons={() => {
-          // Back to this investigation's own scope and first-glance density.
-          setCommonsMode(false);
-          setDetailLevel(0);
-        }}
-      />
+      {full ? (
+        <GraphSearchBar
+          commonsMode={commonsMode}
+          nodes={data?.nodes ?? []}
+          onExitCommons={() => {
+            // Back to this investigation's own scope and first-glance density.
+            setCommonsMode(false);
+            setDetailLevel(0);
+          }}
+        />
+      ) : null}
 
       {showJournal ? (
         <JournalPanel
@@ -862,6 +877,7 @@ export function GraphPanel({
           min={timeBounds.min}
           onChange={setTimeCap}
           onClose={() => setTimeCap(null)}
+          raised={full}
           timestamps={timeline}
           value={timeCap}
         />

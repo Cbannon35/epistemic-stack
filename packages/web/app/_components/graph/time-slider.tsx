@@ -29,6 +29,7 @@ export function GraphTimeSlider({
   max,
   value,
   timestamps,
+  raised = false,
   onChange,
   onClose,
 }: {
@@ -38,6 +39,8 @@ export function GraphTimeSlider({
   value: number;
   /** Sorted, de-duplicated contribution timestamps (nodes + edges). */
   timestamps: readonly number[];
+  /** Sit above the fullscreen search bar instead of hugging the edge. */
+  raised?: boolean;
   onChange: (value: number) => void;
   onClose: () => void;
 }) {
@@ -127,7 +130,11 @@ export function GraphTimeSlider({
   const playedPct = Math.min(100, Math.max(0, ((value - min) / span) * 100));
 
   return (
-    <div className="fade-up -translate-x-1/2 absolute bottom-14 left-1/2 z-20 flex w-[min(520px,85%)] items-center gap-2.5 rounded-full border border-border/60 bg-background/90 py-1.5 pr-3 pl-1.5 backdrop-blur">
+    <div
+      className={`fade-up -translate-x-1/2 absolute left-1/2 z-20 flex w-[min(520px,85%)] items-center gap-2.5 rounded-full border border-border/60 bg-background/90 py-1.5 pr-3 pl-1.5 backdrop-blur ${
+        raised ? "bottom-[4.5rem]" : "bottom-3"
+      }`}
+    >
       <button
         aria-label={playing ? "Pause replay" : "Play replay"}
         className="flex size-6 shrink-0 items-center justify-center rounded-full bg-foreground text-background transition-transform duration-150 active:scale-95"
