@@ -101,10 +101,11 @@ function TurnCard({ turn }: { turn: JournalTurn }) {
           </button>
           {showThinking ? (
             <div className="mt-1.5 space-y-1.5 border-border/50 border-l pl-3">
-              {turn.thinking.map((t) => (
+              {turn.thinking.map((t, i) => (
                 <p
                   className="text-muted-foreground text-xs leading-relaxed"
-                  key={t.slice(0, 48)}
+                  // biome-ignore lint/suspicious/noArrayIndexKey: journal turns are immutable snapshots — blocks are never reordered/inserted, and text prefixes can repeat
+                  key={i}
                 >
                   {t}
                 </p>
@@ -183,10 +184,11 @@ function DelegationCard({ delegation }: { delegation: JournalDelegation }) {
       </button>
       {open ? (
         <div className="mt-2 space-y-1.5 border-border/50 border-l pl-3">
-          {delegation.steps.map((s) => (
+          {delegation.steps.map((s, i) => (
             <p
               className="text-muted-foreground text-xs leading-relaxed"
-              key={`${s.at}-${s.kind}-${s.narration.slice(0, 24)}`}
+              // biome-ignore lint/suspicious/noArrayIndexKey: a delegation's step log is an immutable append-only snapshot — steps carry no id and same-second narrations repeat
+              key={i}
             >
               <span className="font-medium text-foreground/70">{s.kind}:</span>{" "}
               {s.narration}
