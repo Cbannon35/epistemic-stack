@@ -2,6 +2,7 @@
 
 import { useReactFlow } from "@xyflow/react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { graphBus } from "@/app/_components/graph/graph-bus";
 import { useRoom } from "@/app/_components/room-provider";
 import { eveMemorySnapshot, pushEveMemory } from "@/lib/realtime/eve-memory";
 import { eveCursorId, type TourStepEvent } from "@/lib/realtime/types";
@@ -121,6 +122,10 @@ export function useTour(eve: EveDriver) {
   const applyStep = useCallback(
     (step: TourStepEvent, follow: boolean) => {
       const tour = toursRef.current.get(step.tourId);
+      if (step.nodeId) {
+        // The tour may visit nodes hidden by the first-glance budget.
+        graphBus.emit("revealNode", { nodeId: step.nodeId });
+      }
       // Resolve locally first (layouts match across clients); the broadcast
       // x/y only covers nodes missing from a stale local snapshot.
       const center = step.nodeId ? nodeCenter(step.nodeId) : null;

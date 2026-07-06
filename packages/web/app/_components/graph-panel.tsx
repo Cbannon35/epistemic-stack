@@ -16,7 +16,14 @@ import {
   forceManyBody,
   forceSimulation,
 } from "d3-force";
-import { PanelRightCloseIcon, RefreshCwIcon } from "lucide-react";
+import {
+  ListTreeIcon,
+  Maximize2Icon,
+  PanelRightCloseIcon,
+  PlusIcon,
+  RefreshCwIcon,
+  XIcon,
+} from "lucide-react";
 import {
   type CSSProperties,
   useCallback,
@@ -30,6 +37,7 @@ import { AssessmentPanel } from "@/app/_components/graph/assessment-panel";
 import { graphBus } from "@/app/_components/graph/graph-bus";
 import { Inspector } from "@/app/_components/graph/inspector";
 import { nodeTypes } from "@/app/_components/graph/nodes";
+import { OverviewPanel } from "@/app/_components/graph/overview-panel";
 import { GraphTimeSlider } from "@/app/_components/graph/time-slider";
 import {
   EDGE_STYLE,
@@ -131,7 +139,6 @@ function FilterButton({
 }
 
 const LEGEND: Array<{ color: string; label: string; dash?: boolean }> = [
-  { color: "#7c3aed", label: "hypothesis" },
   { color: "#16a34a", label: "supports" },
   { color: "#dc2626", label: "contradicts" },
   { color: "#6b7280", label: "depends on", dash: true },
@@ -139,7 +146,20 @@ const LEGEND: Array<{ color: string; label: string; dash?: boolean }> = [
   { color: "#cbd5e1", label: "cites source" },
 ];
 
-export function GraphPanel({ onClose }: { onClose?: () => void }) {
+// First-glance detail budget: how many claims each "Expand to see more"
+// press reveals. Everything beyond the last step means "show all".
+const CLAIM_BUDGETS = [6, 18, 54];
+
+export function GraphPanel({
+  onClose,
+  full = false,
+  onToggleFull,
+}: {
+  onClose?: () => void;
+  /** Fullscreen "Exploration Breakdown" mode — the graph took over the chat. */
+  full?: boolean;
+  onToggleFull?: () => void;
+}) {
   const [data, setData] = useState<GraphData | null>(null);
   const [positions, setPositions] = useState<
     Map<string, { x: number; y: number }>
@@ -151,6 +171,11 @@ export function GraphPanel({ onClose }: { onClose?: () => void }) {
   const [commonsMode, setCommonsMode] = useState(false);
   // Replay: hide everything contributed after this moment (null = live).
   const [timeCap, setTimeCap] = useState<number | null>(null);
+  // Progressive disclosure: start with the most-connected claims only, and
+  // let the user "Expand to see more". Focusing a hidden node reveals it.
+  const [detailLevel, setDetailLevel] = useState(0);
+  const [revealed, setRevealed] = useState<Set<string>>(new Set());
+  const [showOverview, setShowOverview] = useState(false);
 
   const sigRef = useRef("");
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -186,6 +211,10 @@ export function GraphPanel({ onClose }: { onClose?: () => void }) {
         if (node.kind === "crux") {
           setShowCruxes(true);
         }
+        // Focused nodes escape the first-glance detail budget.
+        setRevealed((prev) =>
+          prev.has(nodeId) ? prev : new Set(prev).add(nodeId)
+        );
         setSelectedId(nodeId);
         // Wait a frame so a just-unfiltered node exists before centering.
         requestAnimationFrame(() => {
@@ -273,6 +302,9 @@ export function GraphPanel({ onClose }: { onClose?: () => void }) {
   // Reload when the scope (investigation / commons) changes, plus a slow fallback poll.
   // biome-ignore lint/correctness/useExhaustiveDependencies: load reads the scope via refs; the effect must re-run when it changes
   useEffect(() => {
+    // A new scope starts back at the first-glance detail level.
+    setDetailLevel(0);
+    setRevealed(new Set());
     load(true);
     const t = setInterval(() => load(), 8000);
     return () => clearInterval(t);
@@ -352,10 +384,44 @@ export function GraphPanel({ onClose }: { onClose?: () => void }) {
     return m;
   }, [data]);
 
-  // Derive React Flow nodes/edges from data + positions + filters + selection.
-  const { rfNodes, rfEdges } = useMemo(() => {
+  // Importance order for the first-glance view: claims ranked by how much
+  // argument hangs off them (relations weigh double; disputes bump further).
+  // Deterministic (id tie-break) so every client agrees on the ordering.
+  const claimRank = useMemo(() => {
+    const rank = new Map<string, number>();
     if (!data) {
-      return { rfNodes: [] as Node[], rfEdges: [] as Edge[] };
+      return rank;
+    }
+    const degree = new Map<string, number>();
+    const bump = (id: string, w: number) =>
+      degree.set(id, (degree.get(id) ?? 0) + w);
+    for (const e of data.edges) {
+      const w = e.kind === "mention" ? 0.5 : 2;
+      bump(e.source, w);
+      bump(e.target, w);
+    }
+    for (const n of data.nodes) {
+      if (n.kind === "claim" && n.challenges) {
+        bump(n.id, 3);
+      }
+    }
+    const claims = data.nodes
+      .filter((n) => n.kind === "claim")
+      .sort(
+        (a, b) =>
+          (degree.get(b.id) ?? 0) - (degree.get(a.id) ?? 0) ||
+          a.id.localeCompare(b.id)
+      );
+    for (const [i, c] of claims.entries()) {
+      rank.set(c.id, i);
+    }
+    return rank;
+  }, [data]);
+
+  // Derive React Flow nodes/edges from data + positions + filters + selection.
+  const { rfNodes, rfEdges, moreCount } = useMemo(() => {
+    if (!data) {
+      return { rfNodes: [] as Node[], rfEdges: [] as Edge[], moreCount: 0 };
     }
     const hidden = new Set<string>();
     for (const n of data.nodes) {
@@ -366,6 +432,69 @@ export function GraphPanel({ onClose }: { onClose?: () => void }) {
       ) {
         hidden.add(n.id);
       }
+    }
+    // First-glance budget (the design's "don't overwhelm on first glance"):
+    // hypotheses and cruxes always show; claims beyond the detail level hide
+    // unless focused; evidence ghosts ride their claims, capped 2 per claim
+    // at level 0. Layout still computes on the FULL set, so positions stay
+    // identical across clients (cursors/tours depend on that).
+    const claimBudget =
+      detailLevel < CLAIM_BUDGETS.length
+        ? CLAIM_BUDGETS[detailLevel]
+        : Number.POSITIVE_INFINITY;
+    const tierHidden = new Set<string>();
+    for (const n of data.nodes) {
+      if (
+        n.kind === "claim" &&
+        (claimRank.get(n.id) ?? 0) >= claimBudget &&
+        !revealed.has(n.id) &&
+        n.id !== selectedId
+      ) {
+        tierHidden.add(n.id);
+      }
+    }
+    const kindOf = new Map(data.nodes.map((n) => [n.id, n.kind]));
+    const claimsOfSource = new Map<string, string[]>();
+    for (const e of data.edges) {
+      if (e.kind !== "mention") {
+        continue;
+      }
+      const src = kindOf.get(e.source) === "source" ? e.source : e.target;
+      const claim = src === e.source ? e.target : e.source;
+      if (kindOf.get(src) !== "source" || kindOf.get(claim) !== "claim") {
+        continue;
+      }
+      claimsOfSource.set(src, [...(claimsOfSource.get(src) ?? []), claim]);
+    }
+    const ghostsPerClaim = new Map<string, number>();
+    const sourceNodes = data.nodes
+      .filter((n) => n.kind === "source")
+      .sort((a, b) => a.id.localeCompare(b.id));
+    for (const n of sourceNodes) {
+      if (revealed.has(n.id) || n.id === selectedId) {
+        continue;
+      }
+      const claims = claimsOfSource.get(n.id);
+      if (!claims || claims.length === 0) {
+        continue; // orphan evidence stays visible
+      }
+      const liveClaims = claims.filter((c) => !tierHidden.has(c));
+      if (liveClaims.length === 0) {
+        tierHidden.add(n.id);
+        continue;
+      }
+      if (detailLevel === 0) {
+        const slot = liveClaims.find((c) => (ghostsPerClaim.get(c) ?? 0) < 2);
+        if (slot) {
+          ghostsPerClaim.set(slot, (ghostsPerClaim.get(slot) ?? 0) + 1);
+        } else {
+          tierHidden.add(n.id);
+        }
+      }
+    }
+    const moreCount = [...tierHidden].filter((id) => !hidden.has(id)).length;
+    for (const id of tierHidden) {
+      hidden.add(id);
     }
     // The lens dims what it discounts (never hides — the record stays); in
     // compare mode, diverging nodes get an outline toward the trusting side.
@@ -416,6 +545,7 @@ export function GraphPanel({ onClose }: { onClose?: () => void }) {
           position: n.position,
           challenges: n.challenges,
           detail: n.detail,
+          study: Boolean(n.detail?.peer_reviewed),
         },
       }));
     const rfEdges: Edge[] = data.edges
@@ -473,7 +603,7 @@ export function GraphPanel({ onClose }: { onClose?: () => void }) {
             : {}),
         };
       });
-    return { rfNodes, rfEdges };
+    return { rfNodes, rfEdges, moreCount };
   }, [
     data,
     positions,
@@ -483,6 +613,9 @@ export function GraphPanel({ onClose }: { onClose?: () => void }) {
     lensScores,
     lensDiffScores,
     timeCap,
+    claimRank,
+    detailLevel,
+    revealed,
   ]);
 
   // Shared views: capture/apply the current framing (filters, lens, camera,
@@ -516,12 +649,18 @@ export function GraphPanel({ onClose }: { onClose?: () => void }) {
       if (lensState.lenses.some((l) => l.id === view.lensId)) {
         lensState.setActiveId(view.lensId);
       }
-      setSelectedId(
+      const validSelection =
         view.selectedId &&
-          dataRef.current?.nodes.some((n) => n.id === view.selectedId)
+        dataRef.current?.nodes.some((n) => n.id === view.selectedId)
           ? view.selectedId
-          : null
-      );
+          : null;
+      if (validSelection) {
+        // A shared view's selection escapes the first-glance budget too.
+        setRevealed((prev) =>
+          prev.has(validSelection) ? prev : new Set(prev).add(validSelection)
+        );
+      }
+      setSelectedId(validSelection);
       // Wait a frame so just-unfiltered nodes exist before the camera glides.
       requestAnimationFrame(() => {
         rfRef.current?.setCenter(view.camera.cx, view.camera.cy, {
@@ -560,6 +699,46 @@ export function GraphPanel({ onClose }: { onClose?: () => void }) {
   }, [selectedId, data]);
   const counts = data?.counts;
 
+  // Tours and delegations walk nodes the model chose from the full catalog;
+  // reveal them as the cursor arrives so the walk is never invisible.
+  useEffect(
+    () =>
+      graphBus.on("revealNode", ({ nodeId }) => {
+        setRevealed((prev) =>
+          prev.has(nodeId) ? prev : new Set(prev).add(nodeId)
+        );
+      }),
+    []
+  );
+
+  // Entering fullscreen brings the structured overview with it (the design's
+  // "Exploration Breakdown" expanded view); it stays dismissible either way.
+  useEffect(() => {
+    if (full) {
+      setShowOverview(true);
+    }
+  }, [full]);
+
+  // The overview card is headed by the investigation's question — the first
+  // thing a member asked — falling back to the leading hypothesis.
+  const question = useMemo(() => {
+    for (const m of room.data.messages ?? []) {
+      if (m.role !== "user") {
+        continue;
+      }
+      const parts = (
+        m as { parts?: ReadonlyArray<{ type?: string; text?: string }> }
+      ).parts;
+      const text = parts
+        ?.find((p) => p.type === "text" && p.text?.trim())
+        ?.text?.trim();
+      if (text) {
+        return text.length > 140 ? `${text.slice(0, 140)}…` : text;
+      }
+    }
+    return null;
+  }, [room.data.messages]);
+
   // Replay bounds: the span of contribution timestamps in the loaded graph.
   const timeBounds = useMemo(() => {
     const ts: number[] = [];
@@ -580,6 +759,11 @@ export function GraphPanel({ onClose }: { onClose?: () => void }) {
     <div className="relative h-full w-full bg-background" ref={rootRef}>
       <div className="absolute top-0 right-0 left-0 z-10 flex items-center justify-between gap-2 border-border/40 border-b bg-background/80 px-3 py-2 backdrop-blur">
         <div className="flex items-center gap-2">
+          {full ? (
+            <span className="mr-1 font-medium text-sm">
+              Exploration Breakdown
+            </span>
+          ) : null}
           <button
             className={`${pillClass} border-border font-medium hover:bg-muted`}
             onClick={() => setCommonsMode((v) => !v)}
@@ -606,6 +790,18 @@ export function GraphPanel({ onClose }: { onClose?: () => void }) {
             type="button"
           >
             ⚖ assessment
+          </button>
+          <button
+            className={`${pillClass} ${
+              showOverview
+                ? "border-border bg-muted text-foreground"
+                : "border-border/60 text-muted-foreground hover:bg-muted hover:text-foreground"
+            } inline-flex items-center gap-1`}
+            onClick={() => setShowOverview((v) => !v)}
+            title="Structured overview — claims, cruxes, sources, studies"
+            type="button"
+          >
+            <ListTreeIcon className="size-3" /> overview
           </button>
           <LensControl contributors={lensContributors} lens={lensState} />
           {timeBounds ? (
@@ -648,7 +844,29 @@ export function GraphPanel({ onClose }: { onClose?: () => void }) {
           >
             <RefreshCwIcon className="size-3.5" />
           </button>
-          {onClose ? (
+          {onToggleFull && !full ? (
+            <button
+              aria-label="Fullscreen graph"
+              className={iconButtonClass}
+              onClick={onToggleFull}
+              title="Expand — the graph takes over the chat"
+              type="button"
+            >
+              <Maximize2Icon className="size-3.5" />
+            </button>
+          ) : null}
+          {full ? (
+            <button
+              aria-label="Exit fullscreen"
+              className={iconButtonClass}
+              onClick={onToggleFull}
+              title="Back to chat + graph"
+              type="button"
+            >
+              <XIcon className="size-4" />
+            </button>
+          ) : null}
+          {onClose && !full ? (
             <button
               aria-label="Hide graph"
               className={iconButtonClass}
@@ -712,6 +930,42 @@ export function GraphPanel({ onClose }: { onClose?: () => void }) {
           </div>
         ))}
       </div>
+
+      {/* Progressive disclosure — the design's bottom-center expand pill. */}
+      {moreCount > 0 || detailLevel > 0 ? (
+        <div className="-translate-x-1/2 absolute bottom-4 left-1/2 z-10 flex items-center gap-1.5">
+          {moreCount > 0 ? (
+            <button
+              className="fade-in flex items-center gap-1 rounded-md border border-border/60 bg-background/90 px-2.5 py-1 text-muted-foreground text-xs shadow-[var(--shadow-card)] backdrop-blur transition-colors duration-150 hover:bg-muted hover:text-foreground"
+              onClick={() => setDetailLevel((l) => l + 1)}
+              type="button"
+            >
+              Expand to see more · {moreCount}
+              <PlusIcon className="size-3" />
+            </button>
+          ) : null}
+          {detailLevel > 0 ? (
+            <button
+              className="fade-in rounded-md border border-border/50 bg-background/90 px-2 py-1 text-muted-foreground text-xs backdrop-blur transition-colors duration-150 hover:bg-muted hover:text-foreground"
+              onClick={() => {
+                setDetailLevel(0);
+                setRevealed(new Set());
+              }}
+              type="button"
+            >
+              Show fewer
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+
+      {showOverview && data ? (
+        <OverviewPanel
+          data={data}
+          onClose={() => setShowOverview(false)}
+          question={question}
+        />
+      ) : null}
 
       {timeCap != null && timeBounds ? (
         <GraphTimeSlider

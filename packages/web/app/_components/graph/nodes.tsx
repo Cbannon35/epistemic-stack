@@ -6,7 +6,20 @@ import {
 } from "@xyflow/react";
 import type { CSSProperties } from "react";
 import { ChallengeFlag } from "@/app/_components/challenges/challenge-flag";
-import { positionColor } from "./types";
+
+// Pill-first node language (Particularity Designs / eve): a small colored
+// kind pill with plain text beneath it, on the dotted canvas — no card boxes.
+// Sources and studies render as "ghosts" (dashed ring + muted text) so
+// evidence is present without shouting over the argument.
+export const KIND_PILL: Record<
+  "hypothesis" | "claim" | "crux" | "source",
+  { bg: string; fg: string; label: string }
+> = {
+  hypothesis: { bg: "#f6dc7d", fg: "#7a5c10", label: "Hypothesis" },
+  claim: { bg: "#d8e5ff", fg: "#3c66c4", label: "Claim" },
+  crux: { bg: "#fad3d0", fg: "#c04440", label: "Crux" },
+  source: { bg: "transparent", fg: "#98a0ab", label: "Source" },
+};
 
 const handleStyle: CSSProperties = {
   opacity: 0,
@@ -44,35 +57,53 @@ const clamp = (lines: number): CSSProperties => ({
   overflow: "hidden",
 });
 
-export function ClaimNode({ data, selected }: NodeProps<any>) {
-  const accent = positionColor(data.position) ?? "var(--border)";
-  const edge = selected ? "var(--foreground)" : "var(--border)";
+function Pill({
+  kind,
+  selected,
+}: {
+  kind: keyof typeof KIND_PILL;
+  selected?: boolean;
+}) {
+  const pill = KIND_PILL[kind];
   return (
-    <div
-      className="graph-node"
+    <span
       style={{
-        width: 200,
-        borderRadius: 10,
-        // Longhand only — mixing the `border` shorthand with `borderLeft`
-        // makes React warn about conflicting style updates across rerenders.
-        borderStyle: "solid",
-        borderWidth: "1px 1px 1px 4px",
-        borderColor: `${edge} ${edge} ${edge} ${accent}`,
-        background: "var(--card)",
-        color: "var(--card-foreground)",
-        padding: "8px 10px",
-        fontSize: 11,
-        lineHeight: 1.35,
+        display: "inline-block",
+        borderRadius: 6,
+        padding: "2px 8px",
+        fontSize: 10,
+        fontWeight: 600,
+        background: pill.bg,
+        color: pill.fg,
         boxShadow: selected ? "0 0 0 2px var(--foreground)" : undefined,
       }}
     >
+      {pill.label}
+    </span>
+  );
+}
+
+export function ClaimNode({ data, selected }: NodeProps<any>) {
+  return (
+    <div className="graph-node" style={{ width: 180, textAlign: "center" }}>
       <Handles />
       <ChallengeFlag challenges={data.challenges} />
-      <div style={clamp(4)}>{data.label}</div>
+      <Pill kind="claim" selected={selected} />
+      <div
+        style={{
+          ...clamp(3),
+          marginTop: 4,
+          fontSize: 11,
+          lineHeight: 1.4,
+          color: "var(--foreground)",
+        }}
+      >
+        {data.label}
+      </div>
       {data.sources > 1 ? (
         <div
           style={{
-            marginTop: 4,
+            marginTop: 2,
             fontSize: 9,
             color: "var(--muted-foreground)",
           }}
@@ -84,103 +115,98 @@ export function ClaimNode({ data, selected }: NodeProps<any>) {
   );
 }
 
+// Evidence ghosts: dashed ring + muted label. `data.study` marks
+// peer-reviewed sources, which read as "Study" per the design.
 export function SourceNode({ data, selected }: NodeProps<any>) {
+  const ghost = KIND_PILL.source.fg;
   return (
-    <div
-      className="graph-node"
-      style={{
-        width: 130,
-        borderRadius: 999,
-        border: `1px solid ${selected ? "var(--foreground)" : "var(--border)"}`,
-        background: "var(--muted)",
-        color: "var(--muted-foreground)",
-        padding: "5px 9px",
-        fontSize: 9,
-      }}
-    >
+    <div className="graph-node" style={{ width: 150, textAlign: "center" }}>
       <Handles />
       <ChallengeFlag challenges={data.challenges} />
-      <div style={clamp(2)}>{data.label}</div>
+      <div
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 5,
+          fontSize: 10,
+          fontWeight: 600,
+          color: ghost,
+        }}
+      >
+        <span
+          style={{
+            width: 11,
+            height: 11,
+            borderRadius: data.study ? 3 : 999,
+            border: `1.5px dashed ${selected ? "var(--foreground)" : ghost}`,
+          }}
+        />
+        {data.study ? "Study" : "Source"}
+      </div>
+      <div
+        style={{
+          ...clamp(3),
+          marginTop: 3,
+          fontSize: 10,
+          lineHeight: 1.4,
+          color: "var(--muted-foreground)",
+        }}
+      >
+        {data.label}
+      </div>
     </div>
   );
 }
 
 export function CruxNode({ data, selected }: NodeProps<any>) {
   return (
-    <div
-      className="graph-node"
-      style={{
-        width: 172,
-        borderRadius: 10,
-        border: `1px solid ${selected ? "#b45309" : "#d97706"}`,
-        background: "color-mix(in oklab, #d97706 12%, var(--card))",
-        color: "var(--foreground)",
-        padding: "6px 9px",
-        fontSize: 10,
-        fontStyle: "italic",
-      }}
-    >
+    <div className="graph-node" style={{ width: 176, textAlign: "center" }}>
       <Handles />
+      <Pill kind="crux" selected={selected} />
       <div
         style={{
-          fontSize: 8,
-          fontStyle: "normal",
-          fontWeight: 600,
-          color: "#b45309",
+          ...clamp(4),
+          marginTop: 4,
+          fontSize: 10.5,
+          lineHeight: 1.4,
+          color: "var(--foreground)",
         }}
       >
-        CRUX
+        {data.label}
       </div>
-      <div style={clamp(3)}>{data.label}</div>
     </div>
   );
 }
 
 export function HypothesisNode({ data, selected }: NodeProps<any>) {
-  const ab = data.detail?.answer_bearing as string | undefined;
   const credence = data.detail?.credence as
     | { average: number; assessors: number }
     | null
     | undefined;
   return (
-    <div
-      className="graph-node"
-      style={{
-        width: 224,
-        borderRadius: 12,
-        border: `2px solid ${selected ? "#6d28d9" : "#7c3aed"}`,
-        background: "color-mix(in oklab, #7c3aed 9%, var(--card))",
-        color: "var(--foreground)",
-        padding: "9px 11px",
-        boxShadow: selected ? "0 0 0 2px #7c3aed" : undefined,
-      }}
-    >
+    <div className="graph-node" style={{ width: 200, textAlign: "center" }}>
       <Handles />
       <ChallengeFlag challenges={data.challenges} />
+      <Pill kind="hypothesis" selected={selected} />
       <div
         style={{
-          fontSize: 8.5,
-          fontWeight: 700,
-          letterSpacing: 0.5,
-          textTransform: "uppercase",
-          color: "#7c3aed",
-          marginBottom: 3,
+          ...clamp(3),
+          marginTop: 4,
+          fontSize: 12,
+          fontWeight: 500,
+          lineHeight: 1.4,
+          color: "var(--foreground)",
         }}
-      >
-        Hypothesis{ab ? ` · answers "${ab}"` : ""}
-      </div>
-      <div
-        style={{ ...clamp(3), fontSize: 12, fontWeight: 500, lineHeight: 1.35 }}
       >
         {data.label}
       </div>
       {credence ? (
-        <div style={{ marginTop: 6 }}>
+        <div style={{ marginTop: 5 }}>
           <div
             style={{
               height: 3,
               borderRadius: 999,
-              background: "color-mix(in oklab, #7c3aed 18%, transparent)",
+              background: "color-mix(in oklab, #f6dc7d 45%, transparent)",
               overflow: "hidden",
             }}
           >
@@ -189,7 +215,7 @@ export function HypothesisNode({ data, selected }: NodeProps<any>) {
                 height: "100%",
                 width: `${Math.round(credence.average * 100)}%`,
                 borderRadius: 999,
-                background: "#7c3aed",
+                background: KIND_PILL.hypothesis.fg,
               }}
             />
           </div>

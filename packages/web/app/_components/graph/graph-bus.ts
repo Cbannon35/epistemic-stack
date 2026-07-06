@@ -14,6 +14,9 @@ type GraphBusEvents = {
   };
   /** Reveal the graph pane and open the investigations dock composer. */
   openDelegate: Record<string, never>;
+  /** Escape the first-glance detail budget — tours/delegations walk nodes
+   * the model chose from the FULL catalog, which may be tier-hidden. */
+  revealNode: { nodeId: string };
 };
 
 type AnyHandler = (payload: never) => void;

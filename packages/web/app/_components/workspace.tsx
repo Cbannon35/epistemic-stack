@@ -1,7 +1,7 @@
 "use client";
 
-import { PanelRightOpenIcon } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { ChevronRightIcon, PanelRightOpenIcon } from "lucide-react";
+import { type FormEvent, useEffect, useRef, useState } from "react";
 import { AgentChat } from "@/app/_components/agent-chat";
 import { RoomTicker } from "@/app/_components/awareness/ticker";
 import { graphBus } from "@/app/_components/graph/graph-bus";
@@ -9,6 +9,11 @@ import { GraphPanel } from "@/app/_components/graph-panel";
 import { ShortcutOverlay } from "@/app/_components/onboarding/shortcut-overlay";
 import { usePeopleState } from "@/app/_components/people/people-bus";
 import { useRoom } from "@/app/_components/room-provider";
+import {
+  PromptInput,
+  PromptInputSubmit,
+  PromptInputTextarea,
+} from "@/components/ai-elements/prompt-input";
 import { dedupeByUser } from "@/lib/realtime/types";
 
 const MIN_CHAT_PX = 380;
@@ -23,6 +28,9 @@ export function Workspace() {
   const graphRef = useRef<HTMLDivElement>(null);
   const dragPctRef = useRef<number | null>(null);
   const [graphOpen, setGraphOpen] = useState(true);
+  // Fullscreen "Exploration Breakdown": the graph takes over the chat; a
+  // floating "Open Research Agent" pill (or the header ✕) brings it back.
+  const [graphFull, setGraphFull] = useState(false);
   // Graph share of the split, in percent — stays proportional on window resize.
   const [graphPct, setGraphPct] = useState(DEFAULT_GRAPH_PCT);
   const [dragging, setDragging] = useState(false);
@@ -117,7 +125,9 @@ export function Workspace() {
       ref={containerRef}
     >
       <ShortcutOverlay />
-      <div className="flex h-full min-w-0 flex-1 flex-col">
+      <div
+        className={`h-full min-w-0 flex-1 flex-col ${graphFull ? "hidden" : "flex"}`}
+      >
         <AgentChat
           headerActions={
             graphOpen ? null : (
@@ -134,7 +144,7 @@ export function Workspace() {
         />
       </div>
 
-      {graphOpen ? (
+      {graphOpen && !graphFull ? (
         // biome-ignore lint/a11y/useSemanticElements: an <hr> can't be an interactive window splitter
         <div
           aria-label="Resize graph panel"
@@ -162,18 +172,82 @@ export function Workspace() {
       ) : null}
 
       <div
-        className={`hidden h-full min-w-0 overflow-hidden md:block ${
+        className={`hidden h-full min-w-0 flex-col overflow-hidden md:flex ${
           dragging ? "" : "transition-[width] duration-200 ease-out"
         }`}
         onPointerEnter={() => setView("graph")}
         onPointerLeave={() => setView("chat")}
         ref={graphRef}
-        style={{ width: graphOpen ? `${graphPct}%` : "0%" }}
+        style={{
+          width: graphFull ? "100%" : graphOpen ? `${graphPct}%` : "0%",
+        }}
       >
-        <GraphPanel onClose={() => setGraphOpen(false)} />
+        <div className="relative min-h-0 flex-1">
+          <GraphPanel
+            full={graphFull}
+            onClose={() => setGraphOpen(false)}
+            onToggleFull={() => setGraphFull((v) => !v)}
+          />
+          {graphFull ? (
+            <button
+              className="-translate-y-1/2 fade-in absolute top-1/2 left-4 z-20 flex items-center gap-1.5 rounded-lg border border-border/60 bg-background/95 py-2 pr-2 pl-3 font-medium text-sm shadow-[var(--shadow-float)] backdrop-blur transition-colors duration-150 hover:bg-muted"
+              onClick={() => setGraphFull(false)}
+              type="button"
+            >
+              Open Research Agent
+              <ChevronRightIcon className="size-4 text-muted-foreground" />
+            </button>
+          ) : null}
+        </div>
+        {graphFull ? <FullscreenComposer /> : null}
       </div>
 
       <RoomTicker />
+    </div>
+  );
+}
+
+// The design keeps the composer under the fullscreen graph — you can keep
+// asking without leaving the Exploration Breakdown. Mirrors the chat
+// composer's turn locking; the transcript itself stays one pill away.
+function FullscreenComposer() {
+  const room = useRoom();
+  const busy = room.status === "submitted" || room.status === "streaming";
+  const foreignTurn =
+    room.activeTurn && !room.activeTurn.mine
+      ? (room.authors.get(room.activeTurn.turnId)?.displayName ??
+        "another researcher")
+      : null;
+
+  const handleSubmit = (message: { text?: string }, event: FormEvent) => {
+    event.preventDefault();
+    const text = message.text?.trim();
+    if (!text || busy || room.completed) {
+      return;
+    }
+    room.send({ message: text });
+  };
+
+  return (
+    <div className="border-border/40 border-t bg-background/85 px-4 py-3 backdrop-blur">
+      <div className="mx-auto w-full max-w-3xl">
+        <PromptInput onSubmit={handleSubmit}>
+          <PromptInputTextarea
+            disabled={room.completed}
+            placeholder={
+              room.completed
+                ? "This investigation has concluded."
+                : foreignTurn
+                  ? `${foreignTurn} is asking…`
+                  : "Ask clarifying questions…"
+            }
+          />
+          <PromptInputSubmit
+            disabled={busy || room.completed}
+            status={room.status}
+          />
+        </PromptInput>
+      </div>
     </div>
   );
 }

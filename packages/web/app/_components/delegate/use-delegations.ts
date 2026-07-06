@@ -2,6 +2,7 @@
 
 import { useReactFlow } from "@xyflow/react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { graphBus } from "@/app/_components/graph/graph-bus";
 import type { EveDriver } from "@/app/_components/presence/use-tour";
 import { useRoom } from "@/app/_components/room-provider";
 import type {
@@ -192,6 +193,10 @@ export function useDelegations(eve: EveDriver): DelegationsApi {
   const applyStep = useCallback(
     (step: DelegationStepEvent) => {
       const run = runsRef.current.get(step.delegationId);
+      if (step.nodeId) {
+        // eve examines nodes the first-glance budget may be hiding.
+        graphBus.emit("revealNode", { nodeId: step.nodeId });
+      }
       const center = step.nodeId ? nodeCenter(step.nodeId) : null;
       const x = center?.x ?? step.x;
       const y = center?.y ?? step.y;
