@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronRightIcon, PanelRightOpenIcon } from "lucide-react";
+import { PanelRightOpenIcon } from "lucide-react";
 import { type FormEvent, useEffect, useRef, useState } from "react";
 import { AgentChat } from "@/app/_components/agent-chat";
 import { RoomTicker } from "@/app/_components/awareness/ticker";
@@ -64,6 +64,16 @@ export function Workspace() {
       setView("chat");
     }
   }, [graphOpen, setView]);
+
+  // Fullscreen pins your avatar to the graph — wherever the pointer wanders
+  // (header, sidebar, menus), there's no chat pane to return to.
+  useEffect(() => {
+    if (graphFull) {
+      setView("graph");
+    } else if (graphOpen) {
+      setView("chat");
+    }
+  }, [graphFull, graphOpen, setView]);
 
   // Clamp so neither pane collapses below its usable minimum.
   const clampPct = (pct: number) => {
@@ -176,7 +186,12 @@ export function Workspace() {
           dragging ? "" : "transition-[width] duration-200 ease-out"
         }`}
         onPointerEnter={() => setView("graph")}
-        onPointerLeave={() => setView("chat")}
+        onPointerLeave={() => {
+          // In fullscreen there is no chat to be "in" — you live on the graph.
+          if (!graphFull) {
+            setView("chat");
+          }
+        }}
         ref={graphRef}
         style={{
           width: graphFull ? "100%" : graphOpen ? `${graphPct}%` : "0%",
@@ -188,16 +203,6 @@ export function Workspace() {
             onClose={() => setGraphOpen(false)}
             onToggleFull={() => setGraphFull((v) => !v)}
           />
-          {graphFull ? (
-            <button
-              className="-translate-y-1/2 fade-in absolute top-1/2 left-4 z-20 flex items-center gap-1.5 rounded-lg border border-border/60 bg-background/95 py-2 pr-2 pl-3 font-medium text-sm shadow-[var(--shadow-float)] backdrop-blur transition-colors duration-150 hover:bg-muted"
-              onClick={() => setGraphFull(false)}
-              type="button"
-            >
-              Open Research Agent
-              <ChevronRightIcon className="size-4 text-muted-foreground" />
-            </button>
-          ) : null}
         </div>
         {graphFull ? <FullscreenComposer /> : null}
       </div>

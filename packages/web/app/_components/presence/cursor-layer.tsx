@@ -56,7 +56,7 @@ export function CursorLayer() {
   const chatWrapRef = useRef<HTMLDivElement | null>(null);
   const chatInputRef = useRef<HTMLInputElement | null>(null);
   const chatIdleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const { on, send, setActivity, setView } = channel;
+  const { on, send, setActivity } = channel;
 
   const ensureRemote = useCallback((id: string): Remote => {
     let remote = remotesRef.current.get(id);
@@ -265,16 +265,17 @@ export function CursorLayer() {
         ts: Date.now(),
       });
     }, CURSOR_SEND_MS);
+    // NOTE: pane enter/leave must NOT flip presence `view` — hovering the
+    // graph toolbar or a floating panel is still "in the graph". The
+    // workspace wrapper owns the chat↔graph view switch.
     const onMove = (e: PointerEvent) => {
       pointerOverRef.current = true;
-      setView("graph");
       const rect = pane.getBoundingClientRect();
       ownPosRef.current = { x: e.clientX - rect.left, y: e.clientY - rect.top };
       sendCursor(e.clientX, e.clientY);
     };
     const onLeave = () => {
       pointerOverRef.current = false;
-      setView("chat");
       send("cursor", { clientId: me.clientId, gone: true, ts: Date.now() });
     };
     pane.addEventListener("pointermove", onMove, { passive: true });
@@ -283,7 +284,7 @@ export function CursorLayer() {
       pane.removeEventListener("pointermove", onMove);
       pane.removeEventListener("pointerleave", onLeave);
     };
-  }, [storeApi, rf, send, setView, me.clientId]);
+  }, [storeApi, rf, send, me.clientId]);
 
   // ── cursor chat: sending ───────────────────────────────────────────────────
   const sendChatRef = useRef(

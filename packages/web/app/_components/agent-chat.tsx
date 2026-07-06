@@ -1,7 +1,7 @@
 "use client";
 
 import type { EveMessage } from "eve/client";
-import { GitForkIcon, MicroscopeIcon } from "lucide-react";
+import { GitForkIcon } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { type FormEvent, type ReactNode, useRef } from "react";
 import { CatchUpDigest } from "@/app/_components/awareness/digest-card";
@@ -17,7 +17,6 @@ import {
   useCommentsProvider,
 } from "@/app/_components/comments/use-comments";
 import { RelatedPriorWork } from "@/app/_components/commons/related-work";
-import { graphBus } from "@/app/_components/graph/graph-bus";
 import { EmptyRoomState } from "@/app/_components/onboarding/room-hints";
 import { PresenceAvatars } from "@/app/_components/presence/presence-avatars";
 import { useRoom } from "@/app/_components/room-provider";
@@ -87,17 +86,6 @@ export function AgentChat({ headerActions }: { headerActions?: ReactNode }) {
           ) : null}
           <span className="ml-auto flex items-center gap-2">
             <PresenceAvatars view="chat" />
-            {room.session.sessionId ? (
-              <button
-                className="inline-flex items-center gap-1.5 rounded-md border border-border/60 px-2 py-1 text-muted-foreground text-xs transition-[background-color,border-color,color,transform] duration-150 hover:bg-muted hover:text-foreground active:scale-[0.97] active:bg-muted"
-                onClick={() => graphBus.emit("openDelegate", {})}
-                title="Assign eve a background sub-investigation — she works the graph while you keep talking"
-                type="button"
-              >
-                <MicroscopeIcon className="size-3.5" />
-                Delegate
-              </button>
-            ) : null}
             {room.session.sessionId ? (
               <button
                 className="inline-flex items-center gap-1.5 rounded-md border border-border/60 px-2 py-1 text-muted-foreground text-xs transition-[background-color,border-color,color,transform] duration-150 hover:bg-muted hover:text-foreground active:scale-[0.97] active:bg-muted"
