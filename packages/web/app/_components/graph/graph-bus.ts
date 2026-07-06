@@ -16,6 +16,8 @@ type GraphBusEvents = {
   openDelegate: Record<string, never>;
   /** Fullscreen the graph in whole-commons scope with the search bar open. */
   openCommonsSearch: Record<string, never>;
+  /** The graph entered/left whole-commons scope — sidebar selection follows. */
+  commonsScope: { active: boolean };
   /** Escape the first-glance detail budget — tours/delegations walk nodes
    * the model chose from the FULL catalog, which may be tier-hidden. */
   revealNode: { nodeId: string };

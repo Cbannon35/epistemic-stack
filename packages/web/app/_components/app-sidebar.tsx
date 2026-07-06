@@ -3,7 +3,9 @@
 import { GitForkIcon, LogOutIcon, PlusIcon, SearchIcon } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
+import { useEffect, useState } from "react";
 import { CommonsSearchMenuItem } from "@/app/_components/commons/commons-search";
+import { graphBus } from "@/app/_components/graph/graph-bus";
 import { useNav } from "@/app/_components/nav-context";
 import { AvatarStack } from "@/app/_components/presence/presence-avatars";
 import { useRoom } from "@/app/_components/room-provider";
@@ -60,6 +62,13 @@ export function AppSidebar({
   const room = useRoom();
   const { newInvestigation } = useNav();
   const params = useParams<{ id?: string }>();
+  // While the whole-commons view is on screen, "Search the commons" is the
+  // selected thing — not the route's investigation row.
+  const [commonsActive, setCommonsActive] = useState(false);
+  useEffect(
+    () => graphBus.on("commonsScope", ({ active }) => setCommonsActive(active)),
+    []
+  );
   const messages = (room.data as { messages?: readonly Msg[] })?.messages ?? [];
   // The open investigation: the route's id, or the live session's id.
   const currentId =
@@ -94,7 +103,7 @@ export function AppSidebar({
               New investigation
             </SidebarMenuButton>
           </SidebarMenuItem>
-          <CommonsSearchMenuItem />
+          <CommonsSearchMenuItem active={commonsActive} />
         </SidebarMenu>
       </SidebarHeader>
 
@@ -108,7 +117,7 @@ export function AppSidebar({
                   <SidebarMenuItem>
                     <SidebarMenuButton
                       className={`${itemClass} cursor-default`}
-                      isActive
+                      isActive={!commonsActive}
                     >
                       <SearchIcon className="mt-0.5 size-4 shrink-0" />
                       <span className="line-clamp-2">{liveTitle}</span>
@@ -120,7 +129,7 @@ export function AppSidebar({
                     <SidebarMenuButton
                       asChild
                       className={itemClass}
-                      isActive={inv.id === currentId}
+                      isActive={!commonsActive && inv.id === currentId}
                     >
                       <Link href={`/i/${encodeURIComponent(inv.id)}`}>
                         {inv.forkedFrom ? (

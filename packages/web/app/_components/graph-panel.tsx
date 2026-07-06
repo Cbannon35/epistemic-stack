@@ -592,6 +592,12 @@ export function GraphPanel({
     }
   }, [full]);
 
+  // Let the sidebar mirror the scope: "Search the commons" reads as selected
+  // while the commons is what's on screen.
+  useEffect(() => {
+    graphBus.emit("commonsScope", { active: commonsMode });
+  }, [commonsMode]);
+
   // The overview card is headed by the investigation's question — the first
   // thing a member asked — falling back to the leading hypothesis.
   const question = useMemo(() => {
