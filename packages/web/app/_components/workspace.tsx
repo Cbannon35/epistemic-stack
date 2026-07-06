@@ -1,7 +1,7 @@
 "use client";
 
 import { PanelRightOpenIcon } from "lucide-react";
-import { type FormEvent, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AgentChat } from "@/app/_components/agent-chat";
 import { RoomTicker } from "@/app/_components/awareness/ticker";
 import { graphBus } from "@/app/_components/graph/graph-bus";
@@ -9,11 +9,6 @@ import { GraphPanel } from "@/app/_components/graph-panel";
 import { ShortcutOverlay } from "@/app/_components/onboarding/shortcut-overlay";
 import { usePeopleState } from "@/app/_components/people/people-bus";
 import { useRoom } from "@/app/_components/room-provider";
-import {
-  PromptInput,
-  PromptInputSubmit,
-  PromptInputTextarea,
-} from "@/components/ai-elements/prompt-input";
 import { dedupeByUser } from "@/lib/realtime/types";
 
 const MIN_CHAT_PX = 380;
@@ -213,55 +208,9 @@ export function Workspace() {
             onToggleFull={() => setGraphFull((v) => !v)}
           />
         </div>
-        {graphFull ? <FullscreenComposer /> : null}
       </div>
 
       <RoomTicker />
-    </div>
-  );
-}
-
-// The design keeps the composer under the fullscreen graph — you can keep
-// asking without leaving the Exploration Breakdown. Mirrors the chat
-// composer's turn locking; the transcript itself stays one pill away.
-function FullscreenComposer() {
-  const room = useRoom();
-  const busy = room.status === "submitted" || room.status === "streaming";
-  const foreignTurn =
-    room.activeTurn && !room.activeTurn.mine
-      ? (room.authors.get(room.activeTurn.turnId)?.displayName ??
-        "another researcher")
-      : null;
-
-  const handleSubmit = (message: { text?: string }, event: FormEvent) => {
-    event.preventDefault();
-    const text = message.text?.trim();
-    if (!text || busy || room.completed) {
-      return;
-    }
-    room.send({ message: text });
-  };
-
-  return (
-    <div className="border-border/40 border-t bg-background/85 px-4 py-3 backdrop-blur">
-      <div className="mx-auto w-full max-w-3xl">
-        <PromptInput onSubmit={handleSubmit}>
-          <PromptInputTextarea
-            disabled={room.completed}
-            placeholder={
-              room.completed
-                ? "This investigation has concluded."
-                : foreignTurn
-                  ? `${foreignTurn} is asking…`
-                  : "Ask clarifying questions…"
-            }
-          />
-          <PromptInputSubmit
-            disabled={busy || room.completed}
-            status={room.status}
-          />
-        </PromptInput>
-      </div>
     </div>
   );
 }

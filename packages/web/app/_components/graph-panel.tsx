@@ -160,8 +160,6 @@ export function GraphPanel({
   const [detailLevel, setDetailLevel] = useState(0);
   const [revealed, setRevealed] = useState<Set<string>>(new Set());
   const [showOverview, setShowOverview] = useState(false);
-  // "Search the commons": whole-commons scope + the floating search bar.
-  const [searchOpen, setSearchOpen] = useState(false);
   const [showJournal, setShowJournal] = useState(false);
 
   const sigRef = useRef("");
@@ -552,15 +550,14 @@ export function GraphPanel({
       detail: { relation: edge.kind.replace(/_/g, " ") },
     };
   }, [selectedId, data]);
-  // Sidebar "Search the commons": widen to whole-commons scope, show every
-  // tier, and drop the search bar over the graph (workspace fullscreens it).
+  // Sidebar "Search the commons": widen to whole-commons scope and show
+  // every tier (workspace fullscreens the graph; the bar focuses itself).
   useEffect(
     () =>
       graphBus.on("openCommonsSearch", () => {
         setCommonsMode(true);
         setShowSources(true);
         setDetailLevel(CLAIM_BUDGETS.length);
-        setSearchOpen(true);
       }),
     []
   );
@@ -709,9 +706,6 @@ export function GraphPanel({
         </div>
         <span className="flex items-center gap-3 text-muted-foreground text-xs">
           <PresenceAvatars view="graph" />
-          {commonsMode ? (
-            <span className="hidden sm:inline">◈ whole commons</span>
-          ) : null}
           <button
             aria-label="Refresh"
             className={iconButtonClass}
@@ -784,12 +778,13 @@ export function GraphPanel({
         proOptions={{ hideAttribution: true }}
       >
         <Background />
-        <Controls showInteractive={false} />
+        {/* Lifted clear of the resident search bar along the bottom edge. */}
+        <Controls showInteractive={false} style={{ marginBottom: 48 }} />
         <CursorLayer />
       </ReactFlow>
 
       {/* Legend */}
-      <div className="absolute bottom-3 left-3 z-10 flex flex-col gap-1 rounded-md border border-border/50 bg-background/85 p-2 backdrop-blur">
+      <div className="absolute bottom-14 left-3 z-10 flex flex-col gap-1 rounded-md border border-border/50 bg-background/85 p-2 backdrop-blur">
         {LEGEND.map((l) => (
           <div
             className="flex items-center gap-1.5 text-[10px] text-muted-foreground"
@@ -810,7 +805,7 @@ export function GraphPanel({
 
       {/* Progressive disclosure — the design's bottom-center expand pill. */}
       {moreCount > 0 || detailLevel > 0 ? (
-        <div className="-translate-x-1/2 absolute bottom-4 left-1/2 z-10 flex items-center gap-1.5">
+        <div className="-translate-x-1/2 absolute bottom-14 left-1/2 z-10 flex items-center gap-1.5">
           {moreCount > 0 ? (
             <button
               className="fade-in flex items-center gap-1 rounded-md border border-border/60 bg-background/90 px-2.5 py-1 text-muted-foreground text-xs shadow-[var(--shadow-card)] backdrop-blur transition-colors duration-150 hover:bg-muted hover:text-foreground"
@@ -844,17 +839,15 @@ export function GraphPanel({
         />
       ) : null}
 
-      {searchOpen && data ? (
-        <GraphSearchBar
-          nodes={data.nodes}
-          onClose={() => {
-            // Leaving search returns to this investigation's own scope.
-            setSearchOpen(false);
-            setCommonsMode(false);
-            setDetailLevel(0);
-          }}
-        />
-      ) : null}
+      <GraphSearchBar
+        commonsMode={commonsMode}
+        nodes={data?.nodes ?? []}
+        onExitCommons={() => {
+          // Back to this investigation's own scope and first-glance density.
+          setCommonsMode(false);
+          setDetailLevel(0);
+        }}
+      />
 
       {showJournal ? (
         <JournalPanel

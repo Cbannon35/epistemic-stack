@@ -127,7 +127,7 @@ export function GraphTimeSlider({
   const playedPct = Math.min(100, Math.max(0, ((value - min) / span) * 100));
 
   return (
-    <div className="fade-up -translate-x-1/2 absolute bottom-3 left-1/2 z-10 flex w-[min(520px,85%)] items-center gap-2.5 rounded-full border border-border/60 bg-background/90 py-1.5 pr-3 pl-1.5 backdrop-blur">
+    <div className="fade-up -translate-x-1/2 absolute bottom-14 left-1/2 z-20 flex w-[min(520px,85%)] items-center gap-2.5 rounded-full border border-border/60 bg-background/90 py-1.5 pr-3 pl-1.5 backdrop-blur">
       <button
         aria-label={playing ? "Pause replay" : "Play replay"}
         className="flex size-6 shrink-0 items-center justify-center rounded-full bg-foreground text-background transition-transform duration-150 active:scale-95"
