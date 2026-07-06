@@ -85,6 +85,7 @@ function SourceCard({
     >
       {image ? (
         // biome-ignore lint/performance/noImgElement: og-images come from arbitrary source domains — next/image would need a remotePatterns allowlist per host
+        // biome-ignore lint/a11y/noNoninteractiveElementInteractions: onError is a load-failure hook, not a user interaction
         <img
           alt=""
           className="h-20 w-full border-border/40 border-b object-cover"

@@ -614,6 +614,7 @@ export function GraphPanel({
   // Refit the camera when the canvas or the visible set changes shape —
   // entering/leaving fullscreen, scope switches, and detail-level steps all
   // leave the old viewport pointing at the wrong extent.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the deps are re-fit TRIGGERS — the effect body deliberately reads nothing from them
   useEffect(() => {
     const t = setTimeout(() => {
       rfRef.current?.fitView({ padding: 0.15, duration: 500 });
