@@ -10,7 +10,7 @@ research agent). Everything eve or a person records — claims, sources, hypothe
 relations — is appended to one shared **commons**: a provenance-first claim graph spanning all
 investigations. Nothing is ever deleted or moderated away; disagreement is stored as
 **challenges**, belief is stored as time-stamped **credences**, and trust is a **read-time**
-choice (**lenses** weight the same graph differently for different readers). Rooms are fully
+concern (every node carries its provenance receipt; see §7.3). Rooms are fully
 multiplayer: durable shared eve sessions, live cursors, guided tours, delegated background
 investigations, comments, and forks.
 
@@ -162,7 +162,7 @@ tours/answers; `@eve investigate …` triggers delegations.
 
 - **Payload** (`lib/graph-data.ts` → `GET /api/graph[?investigation=]`): nodes (claims,
   sources, cruxes, hypotheses), edges, per-node `provenance` (contributor/method/createdAt —
-  what lenses weigh), `counts` (including `credences` + `challenges`, which ride the client's
+  the read-time trust receipt), `counts` (including `credences` + `challenges`, which ride the client's
   reload signature so belief-only or dispute-only changes still repaint), per-node `t`
   timestamps (replay slider), challenge rollups, credence summaries. Scope = the
   investigation's **fork-ancestor chain**; challenges and credences are commons-wide on
@@ -174,7 +174,7 @@ tours/answers; `@eve investigate …` triggers delegations.
   open/center the graph.
 - Inspector (`graph/inspector.tsx`): node detail + **Receipts** (provenance chain, "recorded
   by eve · during a turn asked by ‹user›", per-mention quotes) + **Disputes** (challenge
-  threads, §7.2) + **Credence** (§7.5) + lens score explanation (§7.3).
+  threads, §7.2) + **Credence** (§7.5).
 
 ## 7. Feature subsystems
 
@@ -189,24 +189,20 @@ context continuity.
 ### 7.2 Challenges & receipts (`lib/challenges.ts`, `app/_components/challenges/`)
 
 Challenges are `assessments` rows (`kind='challenge'`) — so every dispute is itself a
-receipted, lens-weightable record. Typed (counter_evidence / rival_interpretation /
+receipted record in the commons. Typed (counter_evidence / rival_interpretation /
 methodological_objection), optional evidence URL, one-level threaded responses. State is
 derived: undisputed → contested (open challenge by a non-author) → answered. Surfaces: corner
 flags on graph nodes, dispute chips on chat claim cards (batched count fetch), Disputes
 section in the inspector, and **promote-a-comment-to-challenge** (cmdk node picker; method
 `promote_comment@1`). `challenges:changed` broadcast + signature counts keep all clients live.
 
-### 7.3 Lenses — late-binding trust (`lib/lenses/`, `app/_components/lenses/`)
+### 7.3 Lenses — late-binding trust (removed from the app 2026-07-06)
 
-A lens is an ordered list of `{match, weight}` rules (match: contribution kinds, contributor
-kind/ids, source count, modality, peer-review, age); evaluation is a pure, deterministic
-client-side function over the graph payload + provenance → score 0..1 per node (weights
-multiply). Built-ins in code (Raw, Skeptic, Primary sources, Humans only); custom lenses
-persisted in `lenses` (rules sanitized server-side; saving writes a receipt). UI: aperture
-pill in the graph toolbar; nodes fade by retained trust (never hidden); **diff mode** outlines
-nodes where two lenses diverge + ranked "Where you part ways" list. Extension point: add
-match fields (e.g. `contested`) in `LensMatch` + one branch in `matchesRule`; stored lenses
-ignore unknown fields.
+The lens UI (rules evaluator, aperture toolbar pill, node fading, diff mode, lens presence
++ adoption) was removed in a de-bloat pass. Late-binding trust remains a data-model concept —
+the `lenses` table and per-node provenance receipts still exist — it just has no in-app UI.
+The full implementation lives in git history (`feat/lenses`, merged 2026-07-05) if it's ever
+revived. The shared-views tray (`view-shared` event) was removed in the same pass.
 
 ### 7.4 Cross-investigation compounding (`lib/commons-search.ts`, `app/api/commons/`)
 

@@ -24,14 +24,7 @@ import {
   RefreshCwIcon,
   XIcon,
 } from "lucide-react";
-import {
-  type CSSProperties,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CONTESTED_COLOR } from "@/app/_components/challenges/challenge-flag";
 import { AssessmentPanel } from "@/app/_components/graph/assessment-panel";
 import { graphBus } from "@/app/_components/graph/graph-bus";
@@ -44,23 +37,11 @@ import {
   type GraphData,
   type InspectorSubject,
 } from "@/app/_components/graph/types";
-import {
-  divergenceOutline,
-  opacityForScore,
-} from "@/app/_components/lenses/colors";
-import { LensControl } from "@/app/_components/lenses/lens-control";
-import { LensDiffPanel } from "@/app/_components/lenses/lens-diff-panel";
-import { useLensState } from "@/app/_components/lenses/use-lenses";
 import { CompareBeliefsPanel } from "@/app/_components/people/compare-beliefs-panel";
 import { peopleBus, usePeopleState } from "@/app/_components/people/people-bus";
 import { CursorLayer } from "@/app/_components/presence/cursor-layer";
 import { PresenceAvatars } from "@/app/_components/presence/presence-avatars";
 import { useRoom } from "@/app/_components/room-provider";
-import {
-  type ViewSnapshot,
-  ViewsTray,
-} from "@/app/_components/weave/views-tray";
-import type { ViewSharedEvent } from "@/lib/realtime/types";
 import { createClient } from "@/lib/supabase/client";
 
 function layout(data: GraphData): Map<string, { x: number; y: number }> {
@@ -178,7 +159,6 @@ export function GraphPanel({
   const [showOverview, setShowOverview] = useState(false);
 
   const sigRef = useRef("");
-  const rootRef = useRef<HTMLDivElement | null>(null);
   // Last counts per scope — same-scope growth is narrated on the ticker.
   const prevCountsRef = useRef<{
     scope: string;
@@ -338,40 +318,8 @@ export function GraphPanel({
     };
   }, [load]);
 
-  // Late-binding trust: score every node through the active lens (or the
-  // A/B pair in compare mode) — client-side, over the payload we already have.
-  const lensState = useLensState(data);
-  const { scores: lensScores, diffScores: lensDiffScores } = lensState;
-  const { setActiveId: setActiveLensId, setDiffIds: setLensDiffIds } =
-    lensState;
-  const activeLens = lensState.active;
-
-  // People layer: the lens choice rides presence (person cards show it and
-  // offer adoption), and "Compare beliefs" opens the credence-gap panel here.
-  const { setLens } = room.channel;
+  // People layer: "Compare beliefs" opens the credence-gap panel here.
   const { compare } = usePeopleState();
-  useEffect(() => {
-    setLens({ id: activeLens.id, name: activeLens.name });
-  }, [setLens, activeLens]);
-  useEffect(() => peopleBus.onAdoptLens(setActiveLensId), [setActiveLensId]);
-  useEffect(() => {
-    // The two bottom-right panels share a slot — belief compare wins.
-    if (compare) {
-      setLensDiffIds(null);
-    }
-  }, [compare, setLensDiffIds]);
-
-  // Contributors present in this graph's receipts — feeds the lens editor's
-  // "written by…" rule.
-  const lensContributors = useMemo(() => {
-    const byId = new Map<string, string>();
-    for (const receipt of Object.values(data?.provenance ?? {})) {
-      byId.set(receipt.contributorId, receipt.contributorName.split("@")[0]);
-    }
-    return [...byId.entries()]
-      .map(([id, name]) => ({ id, name }))
-      .sort((a, b) => a.name.localeCompare(b.name));
-  }, [data]);
 
   // Resolve source ids → label/url for the inspector.
   const sourceById = useMemo(() => {
@@ -496,41 +444,6 @@ export function GraphPanel({
     for (const id of tierHidden) {
       hidden.add(id);
     }
-    // The lens dims what it discounts (never hides — the record stays); in
-    // compare mode, diverging nodes get an outline toward the trusting side.
-    const effScore = (id: string): number | null => {
-      if (lensDiffScores) {
-        return Math.max(
-          lensDiffScores.a.get(id) ?? 1,
-          lensDiffScores.b.get(id) ?? 1
-        );
-      }
-      return lensScores ? (lensScores.get(id) ?? 1) : null;
-    };
-    const lensStyle = (
-      id: string,
-      isSelected: boolean
-    ): CSSProperties | undefined => {
-      const score = effScore(id);
-      if (score === null) {
-        return;
-      }
-      const style: CSSProperties = {
-        opacity: isSelected ? 1 : opacityForScore(score),
-      };
-      if (lensDiffScores) {
-        const delta =
-          (lensDiffScores.a.get(id) ?? 1) - (lensDiffScores.b.get(id) ?? 1);
-        if (Math.abs(delta) >= 0.02) {
-          style.borderRadius = 12;
-          style.outline = `2px solid ${divergenceOutline(delta)}`;
-          // Selected nodes already wear a 2px selection ring (box-shadow);
-          // push the divergence outline further out so they read as two rings.
-          style.outlineOffset = isSelected ? 6 : 3;
-        }
-      }
-      return style;
-    };
     const rfNodes: Node[] = data.nodes
       .filter((n) => !hidden.has(n.id))
       .map((n) => ({
@@ -538,7 +451,6 @@ export function GraphPanel({
         type: n.kind,
         position: positions.get(n.id) ?? { x: 0, y: 0 },
         selected: n.id === selectedId,
-        style: lensStyle(n.id, n.id === selectedId),
         data: {
           label: n.label,
           sources: n.sources,
@@ -565,12 +477,6 @@ export function GraphPanel({
           : e.kind === "mention"
             ? 1
             : 1.6;
-        const sourceScore = effScore(e.source);
-        const targetScore = effScore(e.target);
-        const edgeOpacity =
-          sourceScore === null || targetScore === null
-            ? undefined
-            : opacityForScore(Math.min(sourceScore, targetScore));
         // Contested relations wear the edge equivalent of the node corner
         // flag: a ⚑ at the midpoint, red while open, quiet once answered.
         const contested = e.challenges?.state === "contested";
@@ -582,7 +488,6 @@ export function GraphPanel({
             stroke: s.stroke,
             strokeWidth: isSelected ? width + 1.4 : width,
             strokeDasharray: s.dash,
-            opacity: isSelected ? 1 : edgeOpacity,
           },
           animated: e.kind === "supports" || e.kind === "contradicts",
           ...(e.challenges
@@ -610,67 +515,11 @@ export function GraphPanel({
     selectedId,
     showSources,
     showCruxes,
-    lensScores,
-    lensDiffScores,
     timeCap,
     claimRank,
     detailLevel,
     revealed,
   ]);
-
-  // Shared views: capture/apply the current framing (filters, lens, camera,
-  // selection). Camera travels as a flow-space center + zoom — the viewport
-  // translate depends on pane size, the center doesn't.
-  const captureView = useCallback((): ViewSnapshot | null => {
-    const rf = rfRef.current;
-    const el = rootRef.current;
-    if (!(rf && el)) {
-      return null;
-    }
-    const { x, y, zoom } = rf.getViewport();
-    const rect = el.getBoundingClientRect();
-    return {
-      filters: { sources: showSources, cruxes: showCruxes },
-      lensId: lensState.active.id,
-      camera: {
-        cx: (rect.width / 2 - x) / zoom,
-        cy: (rect.height / 2 - y) / zoom,
-        zoom,
-      },
-      selectedId,
-    };
-  }, [showSources, showCruxes, selectedId, lensState.active.id]);
-
-  const applyView = useCallback(
-    (view: ViewSharedEvent) => {
-      setShowSources(view.filters.sources);
-      setShowCruxes(view.filters.cruxes);
-      // A lens id that doesn't resolve locally (deleted, race) is skipped.
-      if (lensState.lenses.some((l) => l.id === view.lensId)) {
-        lensState.setActiveId(view.lensId);
-      }
-      const validSelection =
-        view.selectedId &&
-        dataRef.current?.nodes.some((n) => n.id === view.selectedId)
-          ? view.selectedId
-          : null;
-      if (validSelection) {
-        // A shared view's selection escapes the first-glance budget too.
-        setRevealed((prev) =>
-          prev.has(validSelection) ? prev : new Set(prev).add(validSelection)
-        );
-      }
-      setSelectedId(validSelection);
-      // Wait a frame so just-unfiltered nodes exist before the camera glides.
-      requestAnimationFrame(() => {
-        rfRef.current?.setCenter(view.camera.cx, view.camera.cy, {
-          zoom: view.camera.zoom,
-          duration: 600,
-        });
-      });
-    },
-    [lensState]
-  );
 
   // The Inspector's subject: a node, or a relation edge dressed as one (same
   // receipts + disputes machinery — the challenge layer keys edges as rel:…).
@@ -756,7 +605,7 @@ export function GraphPanel({
   }, [data]);
 
   return (
-    <div className="relative h-full w-full bg-background" ref={rootRef}>
+    <div className="relative h-full w-full bg-background">
       <div className="absolute top-0 right-0 left-0 z-10 flex items-center justify-between gap-2 border-border/40 border-b bg-background/80 px-3 py-2 backdrop-blur">
         <div className="flex items-center gap-2">
           {full ? (
@@ -803,7 +652,6 @@ export function GraphPanel({
           >
             <ListTreeIcon className="size-3" /> overview
           </button>
-          <LensControl contributors={lensContributors} lens={lensState} />
           {timeBounds ? (
             <button
               className={`${pillClass} ${
@@ -820,11 +668,6 @@ export function GraphPanel({
               ↺ replay
             </button>
           ) : null}
-          <ViewsTray
-            apply={applyView}
-            capture={captureView}
-            roomId={investigation}
-          />
         </div>
         <span className="flex items-center gap-3 text-muted-foreground text-xs">
           <PresenceAvatars view="graph" />
@@ -991,27 +834,8 @@ export function GraphPanel({
         />
       ) : null}
 
-      {!compare && lensState.diff && lensState.divergences ? (
-        <LensDiffPanel
-          diff={lensState.diff}
-          divergences={lensState.divergences}
-          onClose={() => lensState.setDiffIds(null)}
-        />
-      ) : null}
-
       {selected ? (
         <Inspector
-          lens={
-            lensScores && selected.kind !== "relation"
-              ? {
-                  name: lensState.active.name,
-                  score: lensScores.get(selected.id) ?? 1,
-                  reasons: lensState
-                    .explain(selected)
-                    .map((rule) => rule.label),
-                }
-              : undefined
-          }
           node={selected}
           onClose={() => setSelectedId(null)}
           sourceById={sourceById}

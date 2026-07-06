@@ -10,8 +10,9 @@ people and the eve agent. Two invariants shape every design decision:
 
 1. **Append-only.** Nothing in the commons is deleted or overwritten. Disagreement is recorded
    (challenges), never resolved by removal. State like "contested" is *derived*, not stored.
-2. **Late-binding trust.** All writes are accepted with receipts (who/how/when); trust is
-   applied at read time via lenses. Never add write-time gatekeeping.
+2. **Late-binding trust.** All writes are accepted with receipts (who/how/when); trust is a
+   read-time concern, never write-time gatekeeping. (The lens UI that once expressed this was
+   removed 2026-07-06; the principle and the `lenses` table remain.)
 
 ## Layout
 
@@ -78,11 +79,10 @@ cd packages/db  && bunx tsc --noEmit && bunx biome check .
 | @eve answers/tours | `app/_components/presence/use-tour.ts`, `app/api/tour/route.ts` |
 | Delegated investigations | `lib/delegate/`, `app/api/delegate/`, `app/_components/delegate/` |
 | Graph panel + payload | `lib/graph-data.ts`, `app/_components/graph-panel.tsx`, `app/_components/graph/` |
-| Lenses (late-binding trust) | `lib/lenses/`, `app/_components/lenses/` |
 | Comments (highlight→thread) | `app/_components/comments/`, `lib/comments.ts`, `app/(chat)/comment-actions.ts` |
 | Challenges + receipts | `lib/challenges.ts`, `lib/challenge-types.ts`, `app/_components/challenges/`, `app/(chat)/challenge-actions.ts` |
 | Commons search + seeding | `lib/commons-search.ts`, `app/api/commons/` |
 | Credences / belief timeline | `lib/credences.ts`, `app/_components/graph/credence-section.tsx`, time slider in `graph-panel.tsx` |
 | eve agent + tools | `agent/agent.ts`, `agent/instructions.md`, `agent/tools/*.ts`, `agent/lib/commons.ts` |
-| People layer (person cards, follow, lens adopt, belief compare) | `app/_components/people/`, `app/(chat)/people-actions.ts`, `lib/people.ts` |
+| People layer (person cards, follow, belief compare) | `app/_components/people/`, `app/(chat)/people-actions.ts`, `lib/people.ts` |
 | Realtime wire protocol | `lib/realtime/types.ts` (event catalog, identity model) |

@@ -119,7 +119,7 @@ export function AvatarStack({
 // Who's here — filtered to the pane they're currently looking at (avatars
 // follow members' pointers between chat and graph). Presence only exists once
 // the investigation has an id, so a fresh chat renders nothing. Each avatar
-// opens its person card: follow them, adopt their lens, compare beliefs.
+// opens its person card: follow them or compare beliefs.
 export function PresenceAvatars({ view }: { view?: PresenceMeta["view"] }) {
   const { channel, me } = useRoom();
   // One avatar per PERSON (freshest connection wins), then filter by pane.
