@@ -165,9 +165,9 @@ export function GraphTimeSlider({
             style={{ width: `${100 - playedPct}%` }}
           />
         </div>
-        {/* Playhead */}
+        {/* Playhead — red so "when are we" reads at a glance. */}
         <span
-          className="-translate-x-1/2 pointer-events-none absolute inset-y-0 w-0.5 rounded-full bg-foreground"
+          className="-translate-x-1/2 pointer-events-none absolute inset-y-0 w-0.5 rounded-full bg-red-600"
           style={{ left: `${playedPct}%` }}
         />
         {/* Invisible range input carries dragging, keyboard, and a11y. */}

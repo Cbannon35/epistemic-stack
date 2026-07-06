@@ -9,6 +9,12 @@ import { AvatarStack } from "@/app/_components/presence/presence-avatars";
 import { useRoom } from "@/app/_components/room-provider";
 import { signOut } from "@/app/(auth)/actions";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
   Sidebar,
   SidebarContent,
   SidebarFooter,
@@ -19,8 +25,10 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarTrigger,
 } from "@/components/ui/sidebar";
 import type { InvestigationListItem } from "@/lib/investigations";
+import { colorForUser, initialsFor } from "@/lib/realtime/color";
 
 type Msg = {
   role: string;
@@ -66,9 +74,16 @@ export function AppSidebar({
   const showLiveCurrent = Boolean(liveTitle) && !currentPersisted;
 
   return (
-    <Sidebar>
-      <SidebarHeader className="gap-2 p-3">
-        <span className="px-1 font-semibold text-sm">epistemic-stack</span>
+    // Icon rail when collapsed: the toggle, search, and your avatar stay
+    // reachable even when the graph has the whole screen.
+    <Sidebar collapsible="icon">
+      <SidebarHeader className="gap-2 p-3 group-data-[collapsible=icon]:p-2">
+        <div className="flex items-center justify-between gap-1">
+          <span className="truncate px-1 font-semibold text-sm group-data-[collapsible=icon]:hidden">
+            epistemic-stack
+          </span>
+          <SidebarTrigger className="shrink-0 text-muted-foreground" />
+        </div>
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton
@@ -145,18 +160,36 @@ export function AppSidebar({
         </SidebarGroup>
       </SidebarContent>
 
-      <SidebarFooter className="p-3">
-        <div className="flex flex-col gap-1">
-          <span className="truncate px-1 text-muted-foreground text-xs">
-            {me.displayName}
-          </span>
-          <form action={signOut}>
-            <SidebarMenuButton className="justify-start" type="submit">
-              <LogOutIcon className="size-4" />
-              Sign out
-            </SidebarMenuButton>
-          </form>
-        </div>
+      <SidebarFooter className="p-3 group-data-[collapsible=icon]:p-2">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              aria-label="Account"
+              className="flex w-full items-center gap-2 rounded-md p-1 text-left transition-colors duration-150 hover:bg-sidebar-accent"
+              type="button"
+            >
+              <span
+                className="flex size-6 shrink-0 items-center justify-center rounded-full font-medium text-[10px] text-white"
+                style={{ backgroundColor: colorForUser(me.userId) }}
+              >
+                {initialsFor(me.displayName)}
+              </span>
+              <span className="truncate text-muted-foreground text-xs group-data-[collapsible=icon]:hidden">
+                {me.displayName}
+              </span>
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" side="top">
+            <form action={signOut}>
+              <DropdownMenuItem asChild>
+                <button className="w-full" type="submit">
+                  <LogOutIcon className="size-4" />
+                  Sign out
+                </button>
+              </DropdownMenuItem>
+            </form>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </SidebarFooter>
     </Sidebar>
   );

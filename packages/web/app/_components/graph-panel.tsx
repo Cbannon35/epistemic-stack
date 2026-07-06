@@ -29,6 +29,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CONTESTED_COLOR } from "@/app/_components/challenges/challenge-flag";
 import { AssessmentPanel } from "@/app/_components/graph/assessment-panel";
 import { graphBus } from "@/app/_components/graph/graph-bus";
+import { GraphSearchBar } from "@/app/_components/graph/graph-search";
 import { Inspector } from "@/app/_components/graph/inspector";
 import { nodeTypes } from "@/app/_components/graph/nodes";
 import { OverviewPanel } from "@/app/_components/graph/overview-panel";
@@ -159,6 +160,8 @@ export function GraphPanel({
   const [detailLevel, setDetailLevel] = useState(0);
   const [revealed, setRevealed] = useState<Set<string>>(new Set());
   const [showOverview, setShowOverview] = useState(false);
+  // "Search the commons": whole-commons scope + the floating search bar.
+  const [searchOpen, setSearchOpen] = useState(false);
   const [showJournal, setShowJournal] = useState(false);
 
   const sigRef = useRef("");
@@ -549,7 +552,18 @@ export function GraphPanel({
       detail: { relation: edge.kind.replace(/_/g, " ") },
     };
   }, [selectedId, data]);
-  const counts = data?.counts;
+  // Sidebar "Search the commons": widen to whole-commons scope, show every
+  // tier, and drop the search bar over the graph (workspace fullscreens it).
+  useEffect(
+    () =>
+      graphBus.on("openCommonsSearch", () => {
+        setCommonsMode(true);
+        setShowSources(true);
+        setDetailLevel(CLAIM_BUDGETS.length);
+        setSearchOpen(true);
+      }),
+    []
+  );
 
   // Tours and delegations walk nodes the model chose from the full catalog;
   // reveal them as the cursor arrives so the walk is never invisible.
@@ -633,14 +647,6 @@ export function GraphPanel({
               Exploration Breakdown
             </span>
           ) : null}
-          <button
-            className={`${pillClass} border-border font-medium hover:bg-muted`}
-            onClick={() => setCommonsMode((v) => !v)}
-            title="Switch between this investigation and the whole shared commons"
-            type="button"
-          >
-            {commonsMode ? "◈ whole commons" : "◇ this investigation"}
-          </button>
           <FilterButton
             active={showSources}
             onClick={() => setShowSources((v) => !v)}
@@ -703,12 +709,8 @@ export function GraphPanel({
         </div>
         <span className="flex items-center gap-3 text-muted-foreground text-xs">
           <PresenceAvatars view="graph" />
-          {counts ? (
-            <span className="hidden sm:inline">
-              {counts.hypotheses} hyp · {counts.claims} claims ·{" "}
-              {counts.relations} links · {counts.cruxes} cruxes ·{" "}
-              {counts.sources} sources
-            </span>
+          {commonsMode ? (
+            <span className="hidden sm:inline">◈ whole commons</span>
           ) : null}
           <button
             aria-label="Refresh"
@@ -839,6 +841,18 @@ export function GraphPanel({
           data={data}
           onClose={() => setShowOverview(false)}
           question={question}
+        />
+      ) : null}
+
+      {searchOpen && data ? (
+        <GraphSearchBar
+          nodes={data.nodes}
+          onClose={() => {
+            // Leaving search returns to this investigation's own scope.
+            setSearchOpen(false);
+            setCommonsMode(false);
+            setDetailLevel(0);
+          }}
         />
       ) : null}
 

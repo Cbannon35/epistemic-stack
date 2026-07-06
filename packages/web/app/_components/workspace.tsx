@@ -41,6 +41,15 @@ export function Workspace() {
   // and the chat's Delegate button reveals the dock that lives on the graph.
   useEffect(() => graphBus.on("focusNode", () => setGraphOpen(true)), []);
   useEffect(() => graphBus.on("openDelegate", () => setGraphOpen(true)), []);
+  // "Search the commons" lives on the graph, expanded all the way.
+  useEffect(
+    () =>
+      graphBus.on("openCommonsSearch", () => {
+        setGraphOpen(true);
+        setGraphFull(true);
+      }),
+    []
+  );
 
   // Following someone who's in the graph pane reveals the graph here too.
   const { follow } = usePeopleState();

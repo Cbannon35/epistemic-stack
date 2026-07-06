@@ -33,7 +33,6 @@ import {
   PromptInputSubmit,
   PromptInputTextarea,
 } from "@/components/ai-elements/prompt-input";
-import { SidebarTrigger } from "@/components/ui/sidebar";
 
 export function AgentChat({ headerActions }: { headerActions?: ReactNode }) {
   const room = useRoom();
@@ -73,7 +72,6 @@ export function AgentChat({ headerActions }: { headerActions?: ReactNode }) {
     <CommentsProvider value={comments}>
       <main className="flex h-full w-full flex-col">
         <header className="flex items-center gap-2 border-border/40 border-b px-3 py-2.5">
-          <SidebarTrigger />
           <span className="font-medium text-sm">Research agent</span>
           {busy ? (
             <span

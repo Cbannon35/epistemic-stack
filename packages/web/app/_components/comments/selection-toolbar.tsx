@@ -2,6 +2,7 @@
 
 import { LockIcon, MessageSquarePlusIcon } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   anchorFromSelection,
   type CommentAnchor,
@@ -103,7 +104,10 @@ export function SelectionToolbar() {
     zIndex: 60,
   };
 
-  return (
+  // Portaled to <body>: the selection rect is in viewport coords, and any
+  // ancestor with a transform/filter would hijack position:fixed's containing
+  // block, stranding the pill hundreds of pixels off target.
+  return createPortal(
     <div data-comments-ui style={style}>
       {composer ? (
         <div className="fade-up w-72 rounded-lg border border-border/60 bg-popover p-2 shadow-[var(--shadow-float)]">
@@ -180,6 +184,7 @@ export function SelectionToolbar() {
           </button>
         </div>
       )}
-    </div>
+    </div>,
+    document.body
   );
 }
