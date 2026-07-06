@@ -117,10 +117,7 @@ function TurnCard({ turn }: { turn: JournalTurn }) {
       {turn.actions.length > 0 ? (
         <div className="mt-2 space-y-0.5">
           {turn.actions.map((a, i) => (
-            <div
-              className="flex items-start gap-2"
-              key={`${a.tool}-${a.summary}`}
-            >
+            <div className="flex items-start gap-2" key={a.id}>
               {i === 0 ? <EveDot /> : <span className="w-4 shrink-0" />}
               <div className="min-w-0 flex-1">
                 <ActionLine action={a} />

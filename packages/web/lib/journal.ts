@@ -16,6 +16,8 @@ type RawEvent = {
 };
 
 export type JournalAction = {
+  /** The tool call's unique id — stable React key (summaries can repeat). */
+  id: string;
   tool: string;
   at: string | null;
   summary: string;
@@ -201,7 +203,13 @@ function buildTurns(events: RawEvent[]): JournalTurn[] {
           call.input,
           output
         );
-        turn.actions.push({ tool: call.tool, at: at ?? null, summary, nodeId });
+        turn.actions.push({
+          id: callId as string,
+          tool: call.tool,
+          at: at ?? null,
+          summary,
+          nodeId,
+        });
         break;
       }
       case "step.completed": {
