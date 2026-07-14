@@ -10,15 +10,6 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import {
-  forceCenter,
-  forceCollide,
-  forceLink,
-  forceManyBody,
-  forceSimulation,
-  forceX,
-  forceY,
-} from "d3-force";
-import {
   ListTreeIcon,
   Maximize2Icon,
   PanelRightCloseIcon,
@@ -33,6 +24,7 @@ import { AssessmentPanel } from "@/app/_components/graph/assessment-panel";
 import { graphBus } from "@/app/_components/graph/graph-bus";
 import { GraphSearchBar } from "@/app/_components/graph/graph-search";
 import { Inspector } from "@/app/_components/graph/inspector";
+import { layout } from "@/app/_components/graph/layout";
 import { nodeTypes } from "@/app/_components/graph/nodes";
 import { OverviewPanel } from "@/app/_components/graph/overview-panel";
 import { SourcePreview } from "@/app/_components/graph/source-preview";
@@ -51,57 +43,6 @@ import { CursorLayer } from "@/app/_components/presence/cursor-layer";
 import { PresenceAvatars } from "@/app/_components/presence/presence-avatars";
 import { useRoom } from "@/app/_components/room-provider";
 import { createClient } from "@/lib/supabase/client";
-
-function layout(data: GraphData): Map<string, { x: number; y: number }> {
-  // Sort by id first: d3-force is deterministic (seeded LCG + index-based
-  // initial placement) only for identical input ORDER, and Postgres row order
-  // isn't guaranteed. With the sort, every client computes identical positions
-  // for the same graph — which is what lets live cursors and the eve tour
-  // broadcast flow coordinates.
-  const sortedNodes = [...data.nodes].sort((a, b) => a.id.localeCompare(b.id));
-  const sortedEdges = [...data.edges].sort((a, b) => a.id.localeCompare(b.id));
-  const sim = sortedNodes.map((n) => ({ id: n.id, kind: n.kind })) as Array<{
-    id: string;
-    kind: string;
-    x?: number;
-    y?: number;
-  }>;
-  const links = sortedEdges.map((e) => ({
-    source: e.source,
-    target: e.target,
-  }));
-  const simulation = forceSimulation(sim)
-    // Hypotheses repel harder so their clusters spread out. Pill nodes are
-    // wide, text-bearing shapes — spacing tuned so labels don't overlap.
-    .force(
-      "charge",
-      forceManyBody().strength((d) =>
-        (d as { kind: string }).kind === "hypothesis" ? -1600 : -700
-      )
-    )
-    .force(
-      "link",
-      forceLink(links as any)
-        .id((d: any) => d.id)
-        .distance(175)
-    )
-    .force("center", forceCenter(0, 0))
-    // A weak pull toward the origin keeps disconnected components (e.g. a
-    // hypothesis with no recorded links yet) from drifting to the horizon
-    // and forcing the camera to zoom way out.
-    .force("x", forceX(0).strength(0.06))
-    .force("y", forceY(0).strength(0.06))
-    .force("collide", forceCollide(115))
-    .stop();
-  for (let i = 0; i < 320; i++) {
-    simulation.tick();
-  }
-  const pos = new Map<string, { x: number; y: number }>();
-  for (const n of sim) {
-    pos.set(n.id, { x: n.x ?? 0, y: n.y ?? 0 });
-  }
-  return pos;
-}
 
 const pillClass =
   "rounded-full border px-2 py-0.5 text-[10px] transition-[background-color,border-color,color,transform] duration-150 active:scale-[0.97] active:bg-muted";
