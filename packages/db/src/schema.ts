@@ -416,3 +416,26 @@ export const delegations = pgTable(
   },
   (t) => [index('delegations_session_idx').on(t.sessionId)],
 )
+
+// ── topic slices ─────────────────────────────────────────────────────────────
+// A named, LIVING slice of the commons published for external consumption
+// (public gallery pages, JSON export, per-topic MCP servers). Only the recipe
+// is stored — seed query + pinned claims. Membership is computed at READ time
+// (seed FTS hits + graph traversal), so a topic grows as the commons grows and
+// nothing here snapshots or freezes graph content (append-only friendly).
+export const topics = pgTable(
+  'topics',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    slug: text('slug').notNull(), // url handle, unique
+    name: text('name').notNull(),
+    description: text('description'),
+    seedQuery: text('seed_query').notNull(), // full-text seed over the commons
+    pinnedClaimIds: jsonb('pinned_claim_ids').notNull().default(sql`'[]'::jsonb`),
+    creatorId: uuid('creator_id')
+      .notNull()
+      .references(() => contributors.id),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex('topics_slug_idx').on(t.slug)],
+)
