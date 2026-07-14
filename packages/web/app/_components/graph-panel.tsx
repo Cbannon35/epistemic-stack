@@ -27,6 +27,7 @@ import { Inspector } from "@/app/_components/graph/inspector";
 import { layout } from "@/app/_components/graph/layout";
 import { nodeTypes } from "@/app/_components/graph/nodes";
 import { OverviewPanel } from "@/app/_components/graph/overview-panel";
+import { PublishTopicDialog } from "@/app/_components/graph/publish-topic-dialog";
 import { SourcePreview } from "@/app/_components/graph/source-preview";
 import { SourceRail } from "@/app/_components/graph/source-rail";
 import { GraphTimeSlider } from "@/app/_components/graph/time-slider";
@@ -105,6 +106,9 @@ export function GraphPanel({
   const [showCruxes, setShowCruxes] = useState(true);
   const [showAssessment, setShowAssessment] = useState(false);
   const [commonsMode, setCommonsMode] = useState(false);
+  // Commons search bar's live query — seeds the publish-topic dialog.
+  const [commonsQuery, setCommonsQuery] = useState("");
+  const [publishOpen, setPublishOpen] = useState(false);
   // Replay: hide everything contributed after this moment (null = live).
   const [timeCap, setTimeCap] = useState<number | null>(null);
   // Progressive disclosure: start with the most-connected claims only, and
@@ -638,7 +642,16 @@ export function GraphPanel({
             cruxes
           </FilterButton>
           {/* Per-investigation surfaces — meaningless on the whole commons. */}
-          {commonsMode ? null : (
+          {commonsMode ? (
+            <button
+              className={`${pillClass} border-border/60 text-muted-foreground hover:bg-muted hover:text-foreground`}
+              onClick={() => setPublishOpen(true)}
+              title="Publish this view as a public topic slice — page, JSON export, MCP connector"
+              type="button"
+            >
+              ⤴ publish topic
+            </button>
+          ) : (
             <>
               <button
                 className={`${pillClass} border-border/60 text-muted-foreground hover:bg-muted hover:text-foreground`}
@@ -841,7 +854,11 @@ export function GraphPanel({
       ) : null}
 
       {full ? (
-        <GraphSearchBar commonsMode={commonsMode} nodes={data?.nodes ?? []} />
+        <GraphSearchBar
+          commonsMode={commonsMode}
+          nodes={data?.nodes ?? []}
+          onQueryChange={setCommonsQuery}
+        />
       ) : null}
 
       {showJournal && !commonsMode ? (
@@ -884,6 +901,13 @@ export function GraphPanel({
           sourceById={sourceById}
         />
       ) : null}
+
+      <PublishTopicDialog
+        onOpenChange={setPublishOpen}
+        open={publishOpen}
+        pinnedClaimIds={selected?.kind === "claim" ? [selected.id] : []}
+        seedQuery={commonsQuery}
+      />
     </div>
   );
 }

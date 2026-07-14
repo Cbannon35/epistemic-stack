@@ -33,10 +33,13 @@ function kindBadge(kind: GraphNode["kind"], study: boolean) {
 export function GraphSearchBar({
   nodes,
   commonsMode,
+  onQueryChange,
 }: {
   nodes: GraphNode[];
   /** Whole-commons scope — only changes the placeholder copy. */
   commonsMode: boolean;
+  /** Lets the panel mirror the query (seeds the publish-topic dialog). */
+  onQueryChange?: (query: string) => void;
 }) {
   const [query, setQuery] = useState("");
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -102,11 +105,15 @@ export function GraphSearchBar({
         <SearchIcon className="size-4 shrink-0 text-muted-foreground" />
         <input
           className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
-          onChange={(e) => setQuery(e.target.value)}
+          onChange={(e) => {
+            setQuery(e.target.value);
+            onQueryChange?.(e.target.value);
+          }}
           onKeyDown={(e) => {
             if (e.key === "Escape") {
               e.preventDefault();
               setQuery("");
+              onQueryChange?.("");
               e.currentTarget.blur();
             }
           }}
