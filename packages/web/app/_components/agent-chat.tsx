@@ -1,7 +1,6 @@
 "use client";
 
 import type { EveMessage } from "eve/client";
-import { GitForkIcon } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { type FormEvent, type ReactNode, useRef } from "react";
 import { CatchUpDigest } from "@/app/_components/awareness/digest-card";
@@ -9,6 +8,7 @@ import {
   TypingLine,
   useTypingPresence,
 } from "@/app/_components/awareness/typing";
+import { MessageActionsBar } from "@/app/_components/chat/message-actions";
 import { MessagePart } from "@/app/_components/chat/message-parts";
 import { HighlightLayer } from "@/app/_components/comments/highlight-layer";
 import { SelectionToolbar } from "@/app/_components/comments/selection-toolbar";
@@ -59,6 +59,19 @@ export function AgentChat({ headerActions }: { headerActions?: ReactNode }) {
     return name ?? (turnId ? null : room.me.displayName);
   };
 
+  const textOf = (m: EveMessage): string =>
+    m.parts
+      .flatMap((part) => (part.type === "text" ? [part.text] : []))
+      .join("\n\n")
+      .trim();
+
+  const fork = room.session.sessionId
+    ? () =>
+        router.push(
+          `/?fork=${encodeURIComponent(room.session.sessionId as string)}`
+        )
+    : undefined;
+
   const handleSubmit = (message: { text?: string }, event: FormEvent) => {
     event.preventDefault();
     const text = message.text?.trim();
@@ -84,21 +97,6 @@ export function AgentChat({ headerActions }: { headerActions?: ReactNode }) {
           ) : null}
           <span className="ml-auto flex items-center gap-2">
             <PresenceAvatars view="chat" />
-            {room.session.sessionId ? (
-              <button
-                className="inline-flex items-center gap-1.5 rounded-md border border-border/60 px-2 py-1 text-muted-foreground text-xs transition-[background-color,border-color,color,transform] duration-150 hover:bg-muted hover:text-foreground active:scale-[0.97] active:bg-muted"
-                onClick={() =>
-                  router.push(
-                    `/?fork=${encodeURIComponent(room.session.sessionId as string)}`
-                  )
-                }
-                title="Branch a new investigation that starts from this one's claim graph"
-                type="button"
-              >
-                <GitForkIcon className="size-3.5" />
-                Fork
-              </button>
-            ) : null}
             {headerActions}
           </span>
         </header>
@@ -116,22 +114,24 @@ export function AgentChat({ headerActions }: { headerActions?: ReactNode }) {
                 <EmptyRoomState forked={Boolean(room.forkFrom)} />
               </ConversationEmptyState>
             ) : (
-              messages.map((m) => {
+              messages.map((m, messageIndex) => {
                 const author = authorOf(m);
+                const isLast = messageIndex === messages.length - 1;
                 return (
                   <Message
                     className="message-fade-in relative"
+                    data-last={isLast || undefined}
                     data-message-id={m.id}
                     data-role={m.role}
                     from={m.role}
                     key={m.id}
                   >
+                    {author ? (
+                      <span className="block px-1 text-[10px] text-muted-foreground">
+                        {author}
+                      </span>
+                    ) : null}
                     <MessageContent>
-                      {author ? (
-                        <span className="mb-0.5 block text-[10px] text-muted-foreground">
-                          {author}
-                        </span>
-                      ) : null}
                       {m.parts.map((part, index) => (
                         <MessagePart
                           // Parts are append-only within a message; index keys are stable.
@@ -141,6 +141,9 @@ export function AgentChat({ headerActions }: { headerActions?: ReactNode }) {
                         />
                       ))}
                     </MessageContent>
+                    {m.role === "assistant" && !(busy && isLast) ? (
+                      <MessageActionsBar onFork={fork} text={textOf(m)} />
+                    ) : null}
                   </Message>
                 );
               })
