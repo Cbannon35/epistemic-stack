@@ -1,21 +1,37 @@
 "use client";
 
-import { GitForkIcon, LogOutIcon, PlusIcon, SearchIcon } from "lucide-react";
+import {
+  ChevronRightIcon,
+  GitForkIcon,
+  LogOutIcon,
+  PencilIcon,
+  PlusIcon,
+  SearchIcon,
+} from "lucide-react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useParams, useRouter } from "next/navigation";
+import { Collapsible as CollapsiblePrimitive } from "radix-ui";
+import { type FormEvent, useEffect, useState } from "react";
 import { CommonsSearchMenuItem } from "@/app/_components/commons/commons-search";
 import { graphBus } from "@/app/_components/graph/graph-bus";
 import { useNav } from "@/app/_components/nav-context";
 import { AvatarStack } from "@/app/_components/presence/presence-avatars";
 import { useRoom } from "@/app/_components/room-provider";
 import { signOut } from "@/app/(auth)/actions";
+import { renameInvestigationAction } from "@/app/(chat)/actions";
+import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Input } from "@/components/ui/input";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import {
   Sidebar,
   SidebarContent,
@@ -25,12 +41,15 @@ import {
   SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
+  SidebarMenuAction,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarMenuSub,
   SidebarTrigger,
 } from "@/components/ui/sidebar";
 import type { InvestigationListItem } from "@/lib/investigations";
 import { colorForUser, initialsFor } from "@/lib/realtime/color";
+import type { LobbyMeta } from "@/lib/realtime/types";
 
 type Msg = {
   role: string;
@@ -51,6 +70,179 @@ function firstUserQuestion(messages: readonly Msg[]): string | null {
 
 const itemClass =
   "h-auto items-start justify-start whitespace-normal py-1.5 text-left";
+
+// GitHub-style fork tree: group the flat (updatedAt-ordered) page by
+// forkedFrom. A fork whose parent fell off the 50-item page renders at top
+// level rather than vanishing.
+function buildForkTree(investigations: InvestigationListItem[]): {
+  roots: InvestigationListItem[];
+  byParent: Map<string, InvestigationListItem[]>;
+} {
+  const present = new Set(investigations.map((i) => i.id));
+  const roots: InvestigationListItem[] = [];
+  const byParent = new Map<string, InvestigationListItem[]>();
+  for (const inv of investigations) {
+    if (inv.forkedFrom && present.has(inv.forkedFrom)) {
+      const list = byParent.get(inv.forkedFrom);
+      if (list) {
+        list.push(inv);
+      } else {
+        byParent.set(inv.forkedFrom, [inv]);
+      }
+    } else {
+      roots.push(inv);
+    }
+  }
+  return { roots, byParent };
+}
+
+// Owner-only rename, revealed on row hover. Popover keeps the row a plain
+// link; router.refresh() lands the new title in everyone's list.
+function RenameAction({
+  inv,
+  className,
+}: {
+  inv: InvestigationListItem;
+  className?: string;
+}) {
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const [title, setTitle] = useState(inv.title);
+  const [saving, setSaving] = useState(false);
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    const trimmed = title.trim();
+    if (!trimmed || saving) {
+      return;
+    }
+    setSaving(true);
+    renameInvestigationAction({ id: inv.id, title: trimmed })
+      .then(() => {
+        setOpen(false);
+        router.refresh();
+      })
+      .finally(() => setSaving(false));
+  };
+  return (
+    <Popover
+      onOpenChange={(next) => {
+        setOpen(next);
+        if (next) {
+          setTitle(inv.title);
+        }
+      }}
+      open={open}
+    >
+      <PopoverTrigger asChild>
+        <SidebarMenuAction
+          aria-label="Rename investigation"
+          className={className}
+          showOnHover
+          title="Rename"
+        >
+          <PencilIcon />
+        </SidebarMenuAction>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-64 p-2" side="right">
+        <form className="flex items-center gap-2" onSubmit={submit}>
+          <Input
+            autoFocus
+            onChange={(e) => setTitle(e.target.value)}
+            value={title}
+          />
+          <Button disabled={!title.trim() || saving} size="sm" type="submit">
+            Save
+          </Button>
+        </form>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+type NodeContext = {
+  me: { userId: string; displayName: string };
+  currentId: string | null;
+  commonsActive: boolean;
+  lobby: ReadonlyMap<string, LobbyMeta[]>;
+  byParent: Map<string, InvestigationListItem[]>;
+};
+
+// One investigation row, recursing into its forks (collapsible, default open).
+function InvestigationNode({
+  inv,
+  ctx,
+}: {
+  inv: InvestigationListItem;
+  ctx: NodeContext;
+}) {
+  const forks = ctx.byParent.get(inv.id) ?? [];
+  const mine = inv.ownerId === ctx.me.userId;
+  const row = (
+    <>
+      <SidebarMenuButton
+        asChild
+        className={itemClass}
+        isActive={!ctx.commonsActive && inv.id === ctx.currentId}
+      >
+        <Link href={`/i/${encodeURIComponent(inv.id)}`}>
+          {inv.forkedFrom ? (
+            <GitForkIcon className="mt-0.5 size-4 shrink-0" />
+          ) : (
+            <SearchIcon className="mt-0.5 size-4 shrink-0" />
+          )}
+          <span className="min-w-0 flex-1">
+            <span className="line-clamp-2">{inv.title}</span>
+            <span className="text-[10px] text-muted-foreground">
+              {mine ? "you" : inv.ownerName.split("@")[0]}
+              {inv.forkedFrom ? " · fork" : ""}
+            </span>
+          </span>
+          <AvatarStack
+            people={(ctx.lobby.get(inv.id) ?? []).map((p) => ({
+              userId: p.userId,
+              displayName: p.displayName,
+              color: p.color,
+            }))}
+            size="size-4"
+            text="text-[8px]"
+          />
+        </Link>
+      </SidebarMenuButton>
+      {mine ? (
+        <RenameAction
+          className={forks.length > 0 ? "right-6" : undefined}
+          inv={inv}
+        />
+      ) : null}
+    </>
+  );
+  if (forks.length === 0) {
+    return <SidebarMenuItem>{row}</SidebarMenuItem>;
+  }
+  return (
+    <CollapsiblePrimitive.Root asChild defaultOpen>
+      <SidebarMenuItem>
+        {row}
+        <CollapsiblePrimitive.Trigger asChild>
+          <SidebarMenuAction
+            aria-label="Toggle forks"
+            className="transition-transform duration-150 data-[state=open]:rotate-90"
+            title="Forks"
+          >
+            <ChevronRightIcon />
+          </SidebarMenuAction>
+        </CollapsiblePrimitive.Trigger>
+        <CollapsiblePrimitive.Content>
+          <SidebarMenuSub className="mt-1">
+            {forks.map((fork) => (
+              <InvestigationNode ctx={ctx} inv={fork} key={fork.id} />
+            ))}
+          </SidebarMenuSub>
+        </CollapsiblePrimitive.Content>
+      </SidebarMenuItem>
+    </CollapsiblePrimitive.Root>
+  );
+}
 
 export function AppSidebar({
   me,
@@ -79,6 +271,14 @@ export function AppSidebar({
   );
   // A just-started room shows as a synthetic row until router.refresh lands it.
   const showLiveCurrent = Boolean(liveTitle) && !currentPersisted;
+  const { roots, byParent } = buildForkTree(investigations);
+  const nodeCtx: NodeContext = {
+    me,
+    currentId,
+    commonsActive,
+    lobby: room.lobby,
+    byParent,
+  };
 
   return (
     // Icon rail when collapsed: the toggle, search, and your avatar stay
@@ -122,40 +322,8 @@ export function AppSidebar({
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                 ) : null}
-                {investigations.map((inv) => (
-                  <SidebarMenuItem key={inv.id}>
-                    <SidebarMenuButton
-                      asChild
-                      className={itemClass}
-                      isActive={!commonsActive && inv.id === currentId}
-                    >
-                      <Link href={`/i/${encodeURIComponent(inv.id)}`}>
-                        {inv.forkedFrom ? (
-                          <GitForkIcon className="mt-0.5 size-4 shrink-0" />
-                        ) : (
-                          <SearchIcon className="mt-0.5 size-4 shrink-0" />
-                        )}
-                        <span className="min-w-0 flex-1">
-                          <span className="line-clamp-2">{inv.title}</span>
-                          <span className="text-[10px] text-muted-foreground">
-                            {inv.ownerId === me.userId
-                              ? "you"
-                              : inv.ownerName.split("@")[0]}
-                            {inv.forkedFrom ? " · fork" : ""}
-                          </span>
-                        </span>
-                        <AvatarStack
-                          people={(room.lobby.get(inv.id) ?? []).map((p) => ({
-                            userId: p.userId,
-                            displayName: p.displayName,
-                            color: p.color,
-                          }))}
-                          size="size-4"
-                          text="text-[8px]"
-                        />
-                      </Link>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
+                {roots.map((inv) => (
+                  <InvestigationNode ctx={nodeCtx} inv={inv} key={inv.id} />
                 ))}
               </SidebarMenu>
             ) : (

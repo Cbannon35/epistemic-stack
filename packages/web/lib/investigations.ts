@@ -79,6 +79,25 @@ export async function saveInvestigationSession(input: {
     .where(eq(schema.investigations.id, input.id));
 }
 
+/** Owner-only retitle. Returns false when the row isn't the caller's. */
+export async function renameInvestigation(input: {
+  id: string;
+  title: string;
+  ownerId: string;
+}): Promise<boolean> {
+  const rows = await db
+    .update(schema.investigations)
+    .set({ title: input.title })
+    .where(
+      and(
+        eq(schema.investigations.id, input.id),
+        eq(schema.investigations.contributorId, input.ownerId)
+      )
+    )
+    .returning({ id: schema.investigations.id });
+  return rows.length > 0;
+}
+
 export type InvestigationListItem = {
   id: string;
   title: string;

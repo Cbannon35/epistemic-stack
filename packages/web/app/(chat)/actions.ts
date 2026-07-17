@@ -5,6 +5,7 @@ import {
   claimEveSession,
   getInvestigation,
   insertTurnAuthor,
+  renameInvestigation,
   saveInvestigationSession,
   type TurnAuthor,
   upsertInvestigation,
@@ -60,6 +61,22 @@ export async function saveInvestigation(input: {
     events: input.events,
     updatedAt: new Date(),
   });
+}
+
+// Owner-only retitle from the sidebar. The caller refreshes the router to
+// land the new title in everyone's list.
+export async function renameInvestigationAction(input: {
+  id: string;
+  title: string;
+}): Promise<{ ok: boolean }> {
+  const user = await requireUser();
+  const title = input.title.trim().slice(0, 200);
+  if (!(user && title)) {
+    return { ok: false };
+  }
+  return {
+    ok: await renameInvestigation({ id: input.id, title, ownerId: user.id }),
+  };
 }
 
 // The room boot snapshot is served by GET /api/room/[id] (a route handler,
