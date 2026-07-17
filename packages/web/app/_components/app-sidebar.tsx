@@ -14,7 +14,7 @@ import {
 import Link from "next/link";
 import { useParams, usePathname, useRouter } from "next/navigation";
 import { Collapsible as CollapsiblePrimitive } from "radix-ui";
-import { type FormEvent, useEffect, useState } from "react";
+import { type FormEvent, useEffect, useRef, useState } from "react";
 import { CommonsSearchMenuItem } from "@/app/_components/commons/commons-search";
 import { graphBus } from "@/app/_components/graph/graph-bus";
 import { useNav } from "@/app/_components/nav-context";
@@ -170,9 +170,11 @@ function RenameAction({
 function ForkRowMenu({
   inv,
   className,
+  onDeleted,
 }: {
   inv: InvestigationListItem;
   className?: string;
+  onDeleted: (id: string) => void;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -212,10 +214,12 @@ function ForkRowMenu({
           return;
         }
         close();
+        // Hide the row instantly; then make it durable. Deleting the room
+        // you're standing in needs a hard navigation — a soft push keeps the
+        // stale cached sidebar (and a dead room) mounted.
+        onDeleted(inv.id);
         if (pathname === `/i/${inv.id}`) {
-          // Navigation re-runs the force-dynamic layout — refreshing too
-          // would race the push and cancel it.
-          router.push("/");
+          window.location.assign("/");
         } else {
           router.refresh();
         }
@@ -319,6 +323,8 @@ type NodeContext = {
   commonsActive: boolean;
   lobby: ReadonlyMap<string, LobbyMeta[]>;
   byParent: Map<string, InvestigationListItem[]>;
+  /** Optimistically hide a deleted fork while the refresh confirms it. */
+  onDeleted: (id: string) => void;
 };
 
 // One investigation row, recursing into its forks (collapsible, default open).
@@ -366,6 +372,7 @@ function InvestigationNode({
         <ForkRowMenu
           className={forks.length > 0 ? "right-6" : undefined}
           inv={inv}
+          onDeleted={ctx.onDeleted}
         />
       ) : null}
       {mine && !inv.forkedFrom ? (
@@ -412,6 +419,7 @@ export function AppSidebar({
   investigations: InvestigationListItem[];
 }) {
   const room = useRoom();
+  const router = useRouter();
   const { newInvestigation } = useNav();
   const params = useParams<{ id?: string }>();
   // While the whole-commons view is on screen, "Search the commons" is the
@@ -426,18 +434,41 @@ export function AppSidebar({
   const currentId =
     (typeof params.id === "string" ? params.id : null) ?? room.roomId ?? null;
   const liveTitle = firstUserQuestion(messages);
-  const currentPersisted = Boolean(
-    currentId && investigations.some((i) => i.id === currentId)
+  // Deleted forks vanish immediately; the follow-up refresh makes it durable.
+  const [deletedIds, setDeletedIds] = useState<ReadonlySet<string>>(
+    () => new Set()
   );
+  const visible = investigations.filter((i) => !deletedIds.has(i.id));
+  const currentPersisted = Boolean(
+    currentId && visible.some((i) => i.id === currentId)
+  );
+  const isForkRoom = Boolean(currentId?.startsWith("fork_"));
+  // A just-created fork navigates before the client router re-fetches the
+  // shared layout, so its (already durable) row is briefly missing from the
+  // list. Refresh once to pull it in, nested under its parent — never fall
+  // back to a top-level synthetic row for it.
+  const refreshedForkRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (
+      isForkRoom &&
+      !currentPersisted &&
+      refreshedForkRef.current !== currentId
+    ) {
+      refreshedForkRef.current = currentId;
+      router.refresh();
+    }
+  }, [isForkRoom, currentPersisted, currentId, router]);
   // A just-started room shows as a synthetic row until router.refresh lands it.
-  const showLiveCurrent = Boolean(liveTitle) && !currentPersisted;
-  const { roots, byParent } = buildForkTree(investigations);
+  const showLiveCurrent =
+    Boolean(liveTitle) && !currentPersisted && !isForkRoom;
+  const { roots, byParent } = buildForkTree(visible);
   const nodeCtx: NodeContext = {
     me,
     currentId,
     commonsActive,
     lobby: room.lobby,
     byParent,
+    onDeleted: (id) => setDeletedIds((prev) => new Set(prev).add(id)),
   };
 
   return (

@@ -1,7 +1,6 @@
 "use client";
 
 import type { EveMessage } from "eve/client";
-import { useRouter } from "next/navigation";
 import { type FormEvent, type ReactNode, useRef, useState } from "react";
 import { CatchUpDigest } from "@/app/_components/awareness/digest-card";
 import {
@@ -37,7 +36,6 @@ import {
 
 export function AgentChat({ headerActions }: { headerActions?: ReactNode }) {
   const room = useRoom();
-  const router = useRouter();
   const comments = useCommentsProvider();
   const composerRef = useRef<HTMLDivElement | null>(null);
   const { noteTyping, typers } = useTypingPresence();
@@ -82,15 +80,17 @@ export function AgentChat({ headerActions }: { headerActions?: ReactNode }) {
     forkInvestigationAction({ parentId, turnId })
       .then((res) => {
         if ("id" in res) {
-          // No refresh needed: the layout is force-dynamic, so navigating
-          // re-fetches the sidebar list (a refresh here would race the push
-          // and cancel it).
-          router.push(`/i/${res.id}`);
+          // Hard navigation on purpose: a soft push keeps the shared layout
+          // (and its sidebar list) cached, so the new fork would show as a
+          // top-level synthetic row until a manual reload. A full load
+          // renders everything consistently — same as GitHub's fork flow.
+          window.location.assign(`/i/${res.id}`);
         } else {
           setForkError(res.error);
+          setForkingId(null);
         }
       })
-      .finally(() => setForkingId(null));
+      .catch(() => setForkingId(null));
   };
 
   const handleSubmit = (message: { text?: string }, event: FormEvent) => {
