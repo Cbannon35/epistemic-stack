@@ -26,6 +26,7 @@ export async function GET(
     events: inv.events,
     title: inv.title,
     forkedFrom: inv.forkedFrom,
+    forkPreludeCount: inv.forkPreludeCount,
     authors: await listTurnAuthors(id),
   });
 }

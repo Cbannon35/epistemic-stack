@@ -1,6 +1,6 @@
 import "server-only";
 import { createDb, schema } from "@epistack/db";
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq, isNull, or } from "drizzle-orm";
 
 // Persistence for investigations (= eve sessions): shared rooms any signed-in
 // user can list/open/join, plus per-turn author attribution and fork lineage.
@@ -11,6 +11,7 @@ export async function upsertInvestigation(input: {
   contributorId: string;
   title: string;
   forkedFrom?: string | null;
+  eveSessionId?: string | null;
 }): Promise<void> {
   await db
     .insert(schema.investigations)
@@ -19,10 +20,47 @@ export async function upsertInvestigation(input: {
       contributorId: input.contributorId,
       title: input.title,
       forkedFrom: input.forkedFrom ?? null,
+      eveSessionId: input.eveSessionId ?? null,
     })
     // Insert-only: title, owner, and lineage are set once by whoever created
-    // the session; later saves only touch the snapshot columns.
+    // the session; later saves only touch the snapshot columns. Fork rows
+    // already exist at first send, so this is a no-op for them.
     .onConflictDoNothing();
+}
+
+/**
+ * Bind a fork row to the eve session created by its FIRST sender. Conditional
+ * on the slot being empty so two members racing the first send can't split the
+ * room across two eve sessions — the loser's write is dropped and their next
+ * send resumes the winner's session via getSendState.
+ */
+export async function claimEveSession(input: {
+  id: string;
+  eveSessionId: string;
+  sessionState: unknown;
+  events: unknown;
+}): Promise<boolean> {
+  const claimed = await db
+    .update(schema.investigations)
+    .set({
+      eveSessionId: input.eveSessionId,
+      sessionState: input.sessionState,
+      events: input.events,
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(schema.investigations.id, input.id),
+        or(
+          isNull(schema.investigations.eveSessionId),
+          // Idempotent for the winner (and for legacy rows inserted with
+          // their eve id already set) — only a DIFFERENT session is rejected.
+          eq(schema.investigations.eveSessionId, input.eveSessionId)
+        )
+      )
+    )
+    .returning({ id: schema.investigations.id });
+  return claimed.length > 0;
 }
 
 export async function saveInvestigationSession(input: {

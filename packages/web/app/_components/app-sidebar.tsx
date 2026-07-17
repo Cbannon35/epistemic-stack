@@ -70,11 +70,9 @@ export function AppSidebar({
     []
   );
   const messages = (room.data as { messages?: readonly Msg[] })?.messages ?? [];
-  // The open investigation: the route's id, or the live session's id.
+  // The open investigation: the route's id, or the live room's durable id.
   const currentId =
-    (typeof params.id === "string" ? params.id : null) ??
-    room.session.sessionId ??
-    null;
+    (typeof params.id === "string" ? params.id : null) ?? room.roomId ?? null;
   const liveTitle = firstUserQuestion(messages);
   const currentPersisted = Boolean(
     currentId && investigations.some((i) => i.id === currentId)

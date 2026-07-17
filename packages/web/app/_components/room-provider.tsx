@@ -62,21 +62,29 @@ export function RoomProvider({
   onSaved?: () => void;
   children: ReactNode;
 }) {
-  const [store] = useState(
-    () =>
-      new RoomStore({
-        me,
-        initialState: (initial?.session as SessionState | null) ?? null,
-        initialEvents:
-          (initial?.events as HandleMessageStreamEvent[] | null) ?? null,
-        initialAuthors: initial?.authors ?? null,
-        title: initial?.title ?? null,
-        forkedFrom: forkFrom ?? initial?.forkedFrom ?? null,
-        forkSeedLoader: forkFrom ? () => getForkSeed(forkFrom) : undefined,
-        onSessionStart,
-        onSaved,
-      })
-  );
+  const [store] = useState(() => {
+    const initialState = (initial?.session as SessionState | null) ?? null;
+    // A fork row opened before its first send: the branch-point seed comes
+    // from its own truncated transcript. (`forkFrom` is the legacy `/?fork=`
+    // path, seeded from the parent.)
+    const pendingForkRoom =
+      roomId && initial?.forkedFrom && !initialState?.sessionId ? roomId : null;
+    const seedSource = forkFrom ?? pendingForkRoom;
+    return new RoomStore({
+      me,
+      roomId,
+      preludeCount: initial?.forkPreludeCount ?? 0,
+      initialState,
+      initialEvents:
+        (initial?.events as HandleMessageStreamEvent[] | null) ?? null,
+      initialAuthors: initial?.authors ?? null,
+      title: initial?.title ?? null,
+      forkedFrom: forkFrom ?? initial?.forkedFrom ?? null,
+      forkSeedLoader: seedSource ? () => getForkSeed(seedSource) : undefined,
+      onSessionStart,
+      onSaved,
+    });
+  });
   const snapshot = useSyncExternalStore(
     store.subscribe,
     store.getSnapshot,
@@ -90,9 +98,10 @@ export function RoomProvider({
     displayName: me.displayName,
   };
 
-  // The channel follows the live session id (a new room only gets a channel —
-  // presence, cursors — once its first send assigns an id).
-  const liveRoomId = snapshot.session.sessionId ?? roomId;
+  // The channel follows the durable room id (a new room only gets a channel —
+  // presence, cursors — once its first send assigns one). On fork rows this
+  // never flips to the eve session id, so presence/comments stay put.
+  const liveRoomId = snapshot.roomId ?? roomId;
   const channel = useRoomChannel(liveRoomId, identity);
   // Browsing the whole commons means you've LEFT the room as far as the
   // sidebar is concerned — your avatar shouldn't sit on the last chat's row.

@@ -2,6 +2,7 @@
 
 import { ensureContributor } from "@/lib/contributors";
 import {
+  claimEveSession,
   getInvestigation,
   insertTurnAuthor,
   saveInvestigationSession,
@@ -19,14 +20,18 @@ async function requireUser() {
 }
 
 // Called from the sender's client: create the room row on first send (keyed by
-// the eve session id, titled by the question) and save the session snapshot at
-// each turn boundary. Attributed to the signed-in user.
+// the eve session id — fork rows pre-exist under an app id) and save the
+// session snapshot at each turn boundary. Attributed to the signed-in user.
+// When `eveSessionId` is passed (first send), the write is a conditional CLAIM:
+// two members racing a fork's first send can't split the room across two eve
+// sessions — the loser's write drops and their next send resumes the winner's.
 export async function saveInvestigation(input: {
   sessionId: string;
   title: string;
   sessionState: unknown;
   events: unknown;
   forkedFrom?: string | null;
+  eveSessionId?: string | null;
 }): Promise<void> {
   const user = await requireUser();
   if (!user) {
@@ -38,7 +43,17 @@ export async function saveInvestigation(input: {
     contributorId: user.id,
     title: input.title.slice(0, 200),
     forkedFrom: input.forkedFrom ?? null,
+    eveSessionId: input.eveSessionId ?? null,
   });
+  if (input.eveSessionId) {
+    await claimEveSession({
+      id: input.sessionId,
+      eveSessionId: input.eveSessionId,
+      sessionState: input.sessionState,
+      events: input.events,
+    });
+    return;
+  }
   await saveInvestigationSession({
     id: input.sessionId,
     sessionState: input.sessionState,
@@ -54,6 +69,8 @@ export type InvestigationRoom = {
   events: unknown;
   title: string;
   forkedFrom: string | null;
+  /** Copied transcript events on a fork row — the live-stream cursor offset. */
+  forkPreludeCount: number | null;
   authors: TurnAuthor[];
 };
 
@@ -110,27 +127,28 @@ function lastAssistantAnswer(events: unknown): string | null {
 
 // Context injected (via clientContext) into the first turn of a fork so the
 // agent knows what it's branching from. The fork also adopts the parent's
-// graph scope, so prior claims are queryable through the commons tools.
+// graph scope up to the fork moment, so prior claims are queryable through the
+// commons tools. Called with either the PARENT id (legacy `/?fork=` rooms) or
+// the FORK's own row id — a fork row's truncated events make
+// lastAssistantAnswer return exactly the forked message.
 export async function getForkSeed(
-  parentId: string
+  id: string
 ): Promise<{ title: string; seed: string } | null> {
   const user = await requireUser();
   if (!user) {
     return null;
   }
-  const parent = await getInvestigation(parentId);
-  if (!parent) {
+  const row = await getInvestigation(id);
+  if (!row) {
     return null;
   }
-  const answer = lastAssistantAnswer(parent.events);
+  const answer = lastAssistantAnswer(row.events);
   const seed = [
-    `This investigation was forked from "${parent.title}".`,
-    answer
-      ? `Where that investigation left off:\n${answer.slice(0, 2000)}`
-      : null,
-    "The parent's claims, sources, hypotheses and cruxes are already in scope — query the commons before re-researching; build on them.",
+    `This investigation was forked from "${row.title}".`,
+    answer ? `The response it was forked at:\n${answer.slice(0, 2000)}` : null,
+    "The transcript above the fork point is preserved for readers, but it is NOT in your working memory — the branch-point claims, sources, hypotheses and cruxes are in your graph scope; query the commons before re-researching, and build on them.",
   ]
     .filter(Boolean)
     .join("\n\n");
-  return { title: parent.title, seed };
+  return { title: row.title, seed };
 }

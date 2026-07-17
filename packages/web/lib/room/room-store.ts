@@ -38,6 +38,10 @@ export type RoomSnapshot = {
   data: EveMessageData;
   events: readonly HandleMessageStreamEvent[];
   session: { sessionId?: string };
+  /** Durable row id. Diverges from session.sessionId on fork rows, where the
+   * row (and everything keyed to it: comments, presence, graph scope) exists
+   * before any eve session does. */
+  roomId: string | null;
   status: RoomStatus;
   error?: Error;
   /** The turn currently executing, and whether this client sent it. */
@@ -57,6 +61,12 @@ export type RoomBus = {
 
 export type RoomStoreInit = {
   me: RoomIdentity;
+  /** Durable row id when the room was opened by route (may pre-date the eve
+   * session on fork rows). Null/absent for brand-new unrouted rooms. */
+  roomId?: string | null;
+  /** Copied transcript events on a fork row. The live eve stream indexes from
+   * 0, so every stream cursor is offset by this count. */
+  preludeCount?: number;
   initialState?: SessionState | null;
   initialEvents?: HandleMessageStreamEvent[] | null;
   initialAuthors?: TurnAuthor[] | null;
@@ -92,6 +102,8 @@ export class RoomStore {
   #data: EveMessageData;
 
   #sessionId: string | undefined;
+  #roomId: string | undefined;
+  readonly #prelude: number;
   #seedToken: string | undefined;
   #title: string | null;
   #status: RoomStatus = "ready";
@@ -121,6 +133,8 @@ export class RoomStore {
     this.#projEvents = [...this.#events];
     this.#data = this.#reduceAll(this.#projEvents);
     this.#sessionId = init.initialState?.sessionId;
+    this.#roomId = init.roomId ?? init.initialState?.sessionId;
+    this.#prelude = init.preludeCount ?? 0;
     this.#seedToken = init.initialState?.continuationToken;
     this.#title = init.title ?? null;
     for (const a of init.initialAuthors ?? []) {
@@ -192,7 +206,7 @@ export class RoomStore {
       // state below. Best-effort — a miss just means no seed this turn.
       const commonsPromise = getCommonsSendContext({
         query: text,
-        excludeSessionId: this.#sessionId ?? null,
+        excludeSessionId: this.#roomId ?? null,
       }).catch(() => null);
       let state: SessionState;
       let forkSeed: string | undefined;
@@ -201,19 +215,25 @@ export class RoomStore {
         state = { streamIndex: 0 };
         forkSeed = (await this.#init.forkSeedLoader?.())?.seed;
       } else {
-        const sessionId = this.#sessionId as string;
+        // Row lookups key by the durable room id; the eve session id (which
+        // may differ on fork rows) only steers the send itself.
+        const roomId = this.#roomId as string;
         const [persisted, queued] = await Promise.all([
-          getSendState(sessionId) as Promise<SessionState | null>,
+          getSendState(roomId) as Promise<SessionState | null>,
           // One-shot comment context: checkmarked threads ride THIS turn,
           // then flip to "consumed" once it's accepted.
-          getQueuedCommentContext(sessionId),
+          getQueuedCommentContext(roomId),
         ]);
         const continuationToken =
           persisted?.continuationToken ?? this.#seedToken;
         if (!continuationToken) {
           throw new Error("This investigation can't accept new messages.");
         }
-        state = { sessionId, continuationToken, streamIndex: 0 };
+        state = {
+          sessionId: persisted?.sessionId ?? (this.#sessionId as string),
+          continuationToken,
+          streamIndex: 0,
+        };
         if (queued) {
           pinnedComments = queued.digest;
           this.#pendingCommentIds = queued.ids;
@@ -242,23 +262,33 @@ export class RoomStore {
       this.#sentToken = state.continuationToken ?? res.continuationToken;
 
       if (isFirst) {
+        // A routed room (fork row) already has a durable id and URL; a fresh
+        // unrouted room adopts the eve session id as both.
+        const isRouted = this.#roomId !== undefined;
         this.#sessionId = res.sessionId;
+        this.#roomId ??= res.sessionId;
         this.#seedToken = res.continuationToken;
         this.#title = this.#title ?? text;
         // Persist the token immediately: the room stays joinable and sendable
-        // by others even if this tab dies mid-turn.
+        // by others even if this tab dies mid-turn. `events` carries the
+        // current log so a fork's copied prelude survives this save.
         await saveInvestigation({
-          sessionId: res.sessionId,
+          sessionId: this.#roomId,
+          eveSessionId: res.sessionId,
           title: this.#title ?? text,
           sessionState: {
             sessionId: res.sessionId,
             continuationToken: res.continuationToken,
             streamIndex: 0,
           },
-          events: [],
+          events: this.#events,
           forkedFrom: this.#init.forkedFrom ?? null,
         });
-        this.#init.onSessionStart?.(res.sessionId);
+        if (!isRouted) {
+          // Flipping the URL/live-row on a routed room would remount it
+          // mid-stream (mountKey follows liveId in app-shell).
+          this.#init.onSessionStart?.(res.sessionId);
+        }
         this.#init.onSaved?.();
         this.#startLoop();
       } else {
@@ -308,13 +338,16 @@ export class RoomStore {
       }
       try {
         // Fresh read-only handle per attach. The local event count IS the
-        // cursor — the persisted streamIndex is never trusted.
+        // cursor — the persisted streamIndex is never trusted. On fork rows
+        // the log starts with a copied prelude the live eve session never
+        // emitted, so the stream cursor subtracts it.
+        const cursor = this.#events.length - this.#prelude;
         const reader = this.#client.session({
           sessionId,
-          streamIndex: this.#events.length,
+          streamIndex: cursor,
         });
         for await (const event of reader.stream({
-          startIndex: this.#events.length,
+          startIndex: cursor,
           signal: abort.signal,
         })) {
           if (abort.signal.aborted) {
@@ -365,7 +398,8 @@ export class RoomStore {
           e.data.submissionId === optimisticId,
         event
       );
-      if (this.#sentPending && this.#sessionId) {
+      if (this.#sentPending && this.#roomId) {
+        const roomId = this.#roomId;
         const author: RoomAuthor = {
           contributorId: this.#init.me.userId,
           displayName: this.#init.me.displayName,
@@ -376,7 +410,7 @@ export class RoomStore {
           ...author,
         });
         recordTurnAuthor({
-          sessionId: this.#sessionId,
+          sessionId: roomId,
           turnId: event.data.turnId,
         }).catch(() => {
           // Attribution is best-effort; the broadcast already told peers.
@@ -387,7 +421,7 @@ export class RoomStore {
           markCommentsConsumed({ ids, turnId: event.data.turnId })
             .then(() => {
               this.#bus?.publish("comments:changed", {
-                sessionId: this.#sessionId,
+                sessionId: roomId,
               });
             })
             .catch(() => {
@@ -435,16 +469,19 @@ export class RoomStore {
   // send time, so it can never persist a stale one. Followers never write.
   async #persistSnapshot(): Promise<void> {
     const sessionId = this.#sessionId;
-    if (!sessionId) {
+    const roomId = this.#roomId ?? sessionId;
+    if (!(sessionId && roomId)) {
       return;
     }
     await saveInvestigation({
-      sessionId,
+      sessionId: roomId,
       title: this.#title ?? "Investigation",
       sessionState: {
         sessionId,
         continuationToken: this.#sentToken ?? this.#seedToken,
-        streamIndex: this.#events.length,
+        // The eve-side stream index: the copied prelude was never part of
+        // this session's stream.
+        streamIndex: this.#events.length - this.#prelude,
       },
       events: this.#events,
       forkedFrom: this.#init.forkedFrom ?? null,
@@ -533,6 +570,7 @@ export class RoomStore {
       data: this.#data,
       events: this.#events,
       session: { sessionId: this.#sessionId },
+      roomId: this.#roomId ?? null,
       status: this.#status,
       error: this.#error,
       activeTurn: this.#activeTurn,
