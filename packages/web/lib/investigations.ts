@@ -1,6 +1,6 @@
 import "server-only";
 import { createDb, schema } from "@epistack/db";
-import { and, desc, eq, isNull, or } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, or } from "drizzle-orm";
 
 // Persistence for investigations (= eve sessions): shared rooms any signed-in
 // user can list/open/join, plus per-turn author attribution and fork lineage.
@@ -189,6 +189,101 @@ export function hopSessionIds(hop: LineageHop): string[] {
   return hop.eveSessionId && hop.eveSessionId !== hop.id
     ? [hop.id, hop.eveSessionId]
     : [hop.id];
+}
+
+/** One unit of read scope: contributions under these session ids count, up to
+ * the cutoff (epoch ms; null = unbounded). The shape merges and releases
+ * materialize into jsonb — keep it JSON-stable. */
+export type ScopeHop = { sessionIds: string[]; cutoff: number | null };
+
+/** Loosest-wins for unbounded (null); otherwise the earlier moment. */
+export function minCutoff(
+  a: number | null,
+  b: number | null
+): number | null {
+  if (a == null) {
+    return b;
+  }
+  if (b == null) {
+    return a;
+  }
+  return Math.min(a, b);
+}
+
+/** Parse materialized hops back out of jsonb, dropping malformed entries. */
+export function parseScopeHops(value: unknown): ScopeHop[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  const out: ScopeHop[] = [];
+  for (const entry of value) {
+    if (typeof entry !== "object" || entry === null) {
+      continue;
+    }
+    const candidate = entry as { sessionIds?: unknown; cutoff?: unknown };
+    if (!Array.isArray(candidate.sessionIds)) {
+      continue;
+    }
+    const sessionIds = candidate.sessionIds.filter(
+      (s): s is string => typeof s === "string"
+    );
+    if (sessionIds.length === 0) {
+      continue;
+    }
+    out.push({
+      sessionIds,
+      cutoff: typeof candidate.cutoff === "number" ? candidate.cutoff : null,
+    });
+  }
+  return out;
+}
+
+// The FULL read scope of an investigation: its fork-ancestor chain (each hop
+// time-bounded by the fork moment) plus, for every investigation in the
+// chain, the hops adopted through ACCEPTED merge requests. A merge counts for
+// a descendant only when it was accepted before the chain forked away from
+// its target — the same time-composition rule fork cutoffs use — and its
+// materialized hop cutoffs are min-composed with that bound.
+export async function getScopeHops(id: string): Promise<ScopeHop[]> {
+  const chain = await getAncestorChain(id);
+  if (chain.length === 0) {
+    return [];
+  }
+  const hops: ScopeHop[] = chain.map((hop) => ({
+    sessionIds: hopSessionIds(hop),
+    cutoff: hop.cutoff,
+  }));
+  const merges = await db
+    .select({
+      targetId: schema.mergeRequests.targetId,
+      decidedAt: schema.mergeRequests.decidedAt,
+      mergedHops: schema.mergeRequests.mergedHops,
+    })
+    .from(schema.mergeRequests)
+    .where(
+      and(
+        eq(schema.mergeRequests.status, "accepted"),
+        inArray(
+          schema.mergeRequests.targetId,
+          chain.map((h) => h.id)
+        )
+      )
+    );
+  const boundOf = new Map(chain.map((h) => [h.id, h.cutoff]));
+  for (const merge of merges) {
+    const bound = boundOf.get(merge.targetId) ?? null;
+    const decided = merge.decidedAt ? merge.decidedAt.getTime() : null;
+    if (decided != null && bound != null && decided > bound) {
+      continue; // accepted after this chain forked away — not our history
+    }
+    for (const hop of parseScopeHops(merge.mergedHops)) {
+      hops.push({
+        sessionIds: hop.sessionIds,
+        cutoff: minCutoff(hop.cutoff, bound),
+      });
+    }
+  }
+  return hops;
 }
 
 export type TurnAuthor = {

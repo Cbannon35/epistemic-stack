@@ -1,7 +1,7 @@
 import "server-only";
 import { createHash } from "node:crypto";
 import { createDb, schema } from "@epistack/db";
-import { and, asc, eq, inArray, isNull } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, lte } from "drizzle-orm";
 import type {
   ChallengeEntry,
   ChallengeTargetKind,
@@ -241,12 +241,20 @@ export async function challengeThreadsFor(
 }
 
 // Bulk rollup keyed by GRAPH NODE ID (claims/sources bare, hyp:/rel: prefixed)
-// — one query feeds every badge in the graph and the chat transcript.
-export async function challengeSummaryByNode(): Promise<
-  Record<string, NodeChallengeSummary>
-> {
+// — one query feeds every badge in the graph and the chat transcript. An
+// asOf cap (epoch ms) renders the dispute state at a past moment (releases).
+export async function challengeSummaryByNode(
+  asOf?: number | null
+): Promise<Record<string, NodeChallengeSummary>> {
   const rows = await selectChallengeRows()
-    .where(eq(schema.assessments.kind, "challenge"))
+    .where(
+      asOf == null
+        ? eq(schema.assessments.kind, "challenge")
+        : and(
+            eq(schema.assessments.kind, "challenge"),
+            lte(schema.contributions.createdAt, new Date(asOf))
+          )
+    )
     .orderBy(asc(schema.contributions.createdAt));
   const nodeIdOf = (row: ChallengeRow): string | null => {
     if (row.claimId) {

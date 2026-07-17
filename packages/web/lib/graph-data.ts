@@ -7,7 +7,11 @@ import {
   listCredences,
   summarizeCredences,
 } from "@/lib/credences";
-import { getAncestorChain, hopSessionIds } from "@/lib/investigations";
+import {
+  getScopeHops,
+  minCutoff,
+  type ScopeHop,
+} from "@/lib/investigations";
 
 // Read the commons as a graph (nodes + edges + per-node detail). With an
 // investigation id, scope to what that investigation — and its fork ancestors —
@@ -83,19 +87,53 @@ export type GraphPayload = {
   };
 };
 
+export type GraphOptions = {
+  /** Epoch-ms cap: render the graph as of this moment (releases/citations).
+   * Composes into every hop cutoff and also caps commons-wide credence and
+   * challenge data, so a citation is faithful to its moment. */
+  asOf?: number | null;
+  /** Additional hops beyond the investigation's own scope (merge preview). */
+  extraHops?: ScopeHop[];
+  /** Replace scope resolution entirely — release pages render from their
+   * materialized recipe, so they keep working after the room is deleted. */
+  hopsOverride?: ScopeHop[];
+};
+
 export async function buildGraphData(
-  investigation: string | null
+  investigation: string | null,
+  opts: GraphOptions = {}
 ): Promise<GraphPayload> {
-  // A fork inherits its ancestors' graph up to each hop's fork moment
-  // (git-style refs): scope maps every session id a hop's writes may carry —
-  // the row id AND its eve session id — to that hop's time bound (null =
-  // unbounded, i.e. the leaf itself).
-  const chain = investigation ? await getAncestorChain(investigation) : null;
-  const scope = chain ? new Map<string, number | null>() : null;
-  if (chain && scope) {
-    for (const hop of chain) {
-      for (const id of hopSessionIds(hop)) {
-        scope.set(id, hop.cutoff);
+  // Scope is a set of hops (git-style refs): every session id a hop's writes
+  // may be keyed under, mapped to a time bound (null = unbounded). Hops come
+  // from the fork-ancestor chain + accepted merges (getScopeHops), a merge
+  // preview's extra hops, or a release's materialized override.
+  const asOf = opts.asOf ?? null;
+  let hops: ScopeHop[] | null = null;
+  if (opts.hopsOverride) {
+    hops = opts.hopsOverride;
+  } else if (investigation) {
+    hops = [...(await getScopeHops(investigation)), ...(opts.extraHops ?? [])];
+  }
+  const scope = hops ? new Map<string, number | null>() : null;
+  if (hops && scope) {
+    for (const hop of hops) {
+      // asOf composes in FIRST (tightest), then a session id appearing in
+      // multiple hops keeps its LOOSEST bound — e.g. a fork's own session is
+      // unbounded as the leaf even though the copy adopted through a merge
+      // into its parent is frozen at the accept moment.
+      const cutoff = minCutoff(hop.cutoff, asOf);
+      for (const id of hop.sessionIds) {
+        const existing = scope.get(id);
+        if (scope.has(id)) {
+          scope.set(
+            id,
+            existing == null || cutoff == null
+              ? null
+              : Math.max(existing, cutoff)
+          );
+        } else {
+          scope.set(id, cutoff);
+        }
       }
     }
   }
@@ -139,7 +177,9 @@ export async function buildGraphData(
     listCredences(),
     // Challenges are NOT scoped to the investigation: a dispute filed from any
     // room is visible wherever the node appears — that's the adversarial point.
-    challengeSummaryByNode(),
+    // (They ARE time-capped for as-of views: a citation shows the dispute
+    // state at its moment.)
+    challengeSummaryByNode(asOf),
   ]);
 
   const sessionOf = new Map(contributions.map((c) => [c.id, c.sessionId]));
@@ -157,9 +197,18 @@ export async function buildGraphData(
     const t = timeOf.get(contributionId);
     return t != null && t <= cutoff;
   };
+  // Unscoped (whole-commons) reads still honor asOf — a release cut against
+  // the commons view caps by time alone.
+  const withinAsOf = (contributionId: string) => {
+    if (asOf == null) {
+      return true;
+    }
+    const t = timeOf.get(contributionId);
+    return t != null && t <= asOf;
+  };
   const inScope = (contributionId: string) => {
     if (!scope) {
-      return true;
+      return withinAsOf(contributionId);
     }
     const sessionId = sessionOf.get(contributionId);
     if (sessionId == null || !scope.has(sessionId)) {
@@ -176,7 +225,7 @@ export async function buildGraphData(
   // for the timestamp).
   const scopedHypotheses = hypotheses.filter((h) => {
     if (!scope) {
-      return true;
+      return withinAsOf(h.contributionId);
     }
     if (h.sessionId == null || !scope.has(h.sessionId)) {
       return false;
@@ -231,7 +280,11 @@ export async function buildGraphData(
   // hypothesis does.
   const scopedHypIds = new Set(scopedHypotheses.map((h) => h.id));
   const credenceByHypothesis: Map<string, CredenceSummary> = summarizeCredences(
-    credenceEntries.filter((e) => scopedHypIds.has(e.hypothesisId))
+    credenceEntries.filter(
+      (e) =>
+        scopedHypIds.has(e.hypothesisId) &&
+        (asOf == null || Date.parse(e.createdAt) <= asOf)
+    )
   );
 
   const nodes: GraphNodeData[] = [
