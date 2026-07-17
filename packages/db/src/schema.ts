@@ -111,17 +111,31 @@ export const contributions = pgTable(
 export const investigations = pgTable(
   'investigations',
   {
-    id: text('id').primaryKey(), // the eve session id
+    id: text('id').primaryKey(), // the eve session id; fork rows use fork_<uuid> instead
     contributorId: uuid('contributor_id')
       .notNull()
       .references(() => contributors.id),
     title: text('title').notNull(), // the question
     sessionState: jsonb('session_state'), // eve resume cursor (initialSession)
     events: jsonb('events'), // eve event stream (initialEvents) for transcript replay
+    // Fork rows decouple the row id from the eve session: the row exists (with a
+    // copied transcript prelude) before any eve session does. Set on first send.
+    // NULL on legacy rows, where id IS the eve session id.
+    eveSessionId: text('eve_session_id'),
     // Lineage: set when this investigation was forked from another. The fork
-    // adopts the ancestor chain's graph scope, so it STARTS FROM the parent's
-    // claims — compounding, made navigable.
+    // adopts the ancestor chain's graph scope UP TO each hop's fork moment, so
+    // it STARTS FROM the parent's claims — compounding, made navigable — while
+    // parent and fork evolve in parallel afterwards.
     forkedFrom: text('forked_from').references((): AnyPgColumn => investigations.id),
+    // Provenance of the branch point: the parent-side turn that was forked, the
+    // moment it completed (the ancestor scope bound), and how many transcript
+    // events were copied in (the live-stream cursor offset).
+    forkedAtTurn: text('forked_at_turn'),
+    forkCutoff: timestamp('fork_cutoff', { withTimezone: true }),
+    forkPreludeCount: integer('fork_prelude_count'),
+    // Read-time seeding choice: consult prior commons work (default) or start
+    // blank. Writes always land in the commons either way (late-binding trust).
+    seedFromCommons: boolean('seed_from_commons').notNull().default(true),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
