@@ -41,13 +41,16 @@ async function recordContribution(
   method: string,
   payload: string,
   sessionId?: string,
-  turnId?: string
+  turnId?: string,
+  contributorId: string = AGENT_CONTRIBUTOR_ID
 ): Promise<string> {
-  await ensureAgentContributor();
+  if (contributorId === AGENT_CONTRIBUTOR_ID) {
+    await ensureAgentContributor();
+  }
   const [row] = await db
     .insert(schema.contributions)
     .values({
-      contributorId: AGENT_CONTRIBUTOR_ID,
+      contributorId,
       method,
       payloadHash: contentHash(payload),
       sessionId,
@@ -71,6 +74,9 @@ export type AddSourceInput = {
   retrieval?: Record<string, unknown>;
   sessionId?: string;
   turnId?: string;
+  /** Attribution override — external MCP agents write as themselves.
+   * Defaults to the eve agent contributor. */
+  contributorId?: string;
 };
 
 // Content-addressed source: the id is a hash of the stored text, so the same
@@ -81,7 +87,8 @@ export async function addSource(input: AddSourceInput): Promise<string> {
     "fetch_source@1",
     input.text,
     input.sessionId,
-    input.turnId
+    input.turnId,
+    input.contributorId
   );
   await db
     .insert(schema.sources)
@@ -124,6 +131,7 @@ export type RecordClaimInput = {
   descriptors?: Record<string, unknown>;
   sessionId?: string;
   turnId?: string;
+  contributorId?: string;
 };
 
 export type RecordClaimResult = {
@@ -157,7 +165,8 @@ export async function recordClaim(
       "record_claim@1",
       normalized,
       input.sessionId,
-      input.turnId
+      input.turnId,
+      input.contributorId
     );
     await db
       .insert(schema.claims)
@@ -177,7 +186,8 @@ export async function recordClaim(
     "record_claim@1",
     input.quote,
     input.sessionId,
-    input.turnId
+    input.turnId,
+    input.contributorId
   );
   await db.insert(schema.mentions).values({
     claimId: canonicalId,
@@ -232,6 +242,7 @@ export async function recordRelation(input: {
   rationale?: string;
   sessionId?: string;
   turnId?: string;
+  contributorId?: string;
 }): Promise<{ ok: boolean; error?: string }> {
   // Validate both endpoints exist so a bad claim id returns graceful feedback
   // to the model instead of a foreign-key crash.
@@ -255,7 +266,8 @@ export async function recordRelation(input: {
     "record_relation@1",
     input.fromClaimId + input.type + input.toClaimId,
     input.sessionId,
-    input.turnId
+    input.turnId,
+    input.contributorId
   );
   await db.insert(schema.relations).values({
     fromClaimId: input.fromClaimId,
@@ -274,6 +286,7 @@ export async function recordCrux(input: {
   implication?: string;
   sessionId?: string;
   turnId?: string;
+  contributorId?: string;
 }): Promise<{ ok: boolean; error?: string; cruxId?: string }> {
   const rows = await db
     .select({ id: schema.claims.canonicalId })
@@ -289,7 +302,8 @@ export async function recordCrux(input: {
     "record_crux@1",
     input.question,
     input.sessionId,
-    input.turnId
+    input.turnId,
+    input.contributorId
   );
   const [inserted] = await db
     .insert(schema.cruxes)
@@ -310,12 +324,14 @@ export async function recordHypothesis(input: {
   answerBearing?: string;
   sessionId?: string;
   turnId?: string;
+  contributorId?: string;
 }): Promise<{ id: string }> {
   const contributionId = await recordContribution(
     "record_hypothesis@1",
     input.statement,
     input.sessionId,
-    input.turnId
+    input.turnId,
+    input.contributorId
   );
   const [row] = await db
     .insert(schema.hypotheses)
@@ -338,6 +354,7 @@ export async function linkClaimToHypothesis(input: {
   diagnosticity?: number;
   sessionId?: string;
   turnId?: string;
+  contributorId?: string;
 }): Promise<{ ok: boolean; error?: string }> {
   const claim = await db
     .select({ id: schema.claims.canonicalId })
@@ -360,7 +377,8 @@ export async function linkClaimToHypothesis(input: {
     "link_hypothesis@1",
     input.claimId + input.hypothesisId,
     input.sessionId,
-    input.turnId
+    input.turnId,
+    input.contributorId
   );
   await db.insert(schema.hypothesisLinks).values({
     hypothesisId: input.hypothesisId,

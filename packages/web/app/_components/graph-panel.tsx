@@ -22,6 +22,7 @@ import {
   XIcon,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AgentChips } from "@/app/_components/agents/agent-chips";
 import { CONTESTED_COLOR } from "@/app/_components/challenges/challenge-flag";
 import { AssessmentPanel } from "@/app/_components/graph/assessment-panel";
 import { graphBus } from "@/app/_components/graph/graph-bus";
@@ -812,6 +813,7 @@ export function GraphPanel({
           ) : null}
         </div>
         <span className="flex items-center gap-3 text-muted-foreground text-xs">
+          <AgentChips />
           <PresenceAvatars view="graph" />
           <button
             aria-label="Refresh"

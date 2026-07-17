@@ -2,6 +2,7 @@
 
 import { useReactFlow, useStoreApi } from "@xyflow/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useAgentActivity } from "@/app/_components/agents/use-agent-activity";
 import { DelegationDock } from "@/app/_components/delegate/delegation-dock";
 import { useDelegations } from "@/app/_components/delegate/use-delegations";
 import { FollowPill, useFollowCamera } from "@/app/_components/people/follow";
@@ -13,8 +14,12 @@ import { TourPill } from "@/app/_components/presence/tour-pill";
 import { type EveDriver, useTour } from "@/app/_components/presence/use-tour";
 import { useRoom } from "@/app/_components/room-provider";
 import { PingLayer } from "@/app/_components/weave/pings";
-import { DELEGATE_COLOR, EVE_COLOR } from "@/lib/realtime/color";
-import { isEveCursorId } from "@/lib/realtime/types";
+import { colorForUser, DELEGATE_COLOR, EVE_COLOR } from "@/lib/realtime/color";
+import {
+  AGENT_CURSOR_PREFIX,
+  isAgentCursorId,
+  isEveCursorId,
+} from "@/lib/realtime/types";
 import { throttle } from "@/lib/throttle";
 
 const CURSOR_SEND_MS = 40;
@@ -70,7 +75,7 @@ export function CursorLayer() {
         lastTs: 0,
         chatTs: 0,
         hold: false,
-        tau: isEveCursorId(id) ? 250 : 60,
+        tau: isEveCursorId(id) || isAgentCursorId(id) ? 250 : 60,
         el: null,
         bubble: null,
       };
@@ -119,6 +124,10 @@ export function CursorLayer() {
   const delegations = useDelegations(eveDriver);
   const delegationsRef = useRef(delegations);
   delegationsRef.current = delegations;
+
+  // External MCP agents too — one cursor per agent contributor, driven by
+  // server-broadcast activity events.
+  const agentActivity = useAgentActivity(eveDriver);
 
   // Person-follow: camera shadows a teammate's cursor (people-bus state).
   const followTarget = useFollowCamera();
@@ -474,6 +483,15 @@ export function CursorLayer() {
         <RemoteCursor
           color={DELEGATE_COLOR}
           displayName="eve · investigating"
+          id={id}
+          key={id}
+          register={registerRefs}
+        />
+      ))}
+      {agentActivity.cursors.map((id) => (
+        <RemoteCursor
+          color={colorForUser(id.slice(AGENT_CURSOR_PREFIX.length))}
+          displayName="agent"
           id={id}
           key={id}
           register={registerRefs}

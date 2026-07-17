@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  BotIcon,
   ChevronRightIcon,
   GitForkIcon,
   GitMergeIcon,
@@ -15,6 +16,7 @@ import Link from "next/link";
 import { useParams, usePathname, useRouter } from "next/navigation";
 import { Collapsible as CollapsiblePrimitive } from "radix-ui";
 import { type FormEvent, useEffect, useRef, useState } from "react";
+import { ConnectAgentDialog } from "@/app/_components/agents/connect-agent-dialog";
 import { CommonsSearchMenuItem } from "@/app/_components/commons/commons-search";
 import { graphBus } from "@/app/_components/graph/graph-bus";
 import { useNav } from "@/app/_components/nav-context";
@@ -425,6 +427,7 @@ export function AppSidebar({
   // While the whole-commons view is on screen, "Search the commons" is the
   // selected thing — not the route's investigation row.
   const [commonsActive, setCommonsActive] = useState(false);
+  const [connectAgentOpen, setConnectAgentOpen] = useState(false);
   useEffect(
     () => graphBus.on("commonsScope", ({ active }) => setCommonsActive(active)),
     []
@@ -546,6 +549,10 @@ export function AppSidebar({
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" side="top">
+            <DropdownMenuItem onSelect={() => setConnectAgentOpen(true)}>
+              <BotIcon className="size-4" />
+              Connect an agent
+            </DropdownMenuItem>
             <form action={signOut}>
               <DropdownMenuItem asChild>
                 <button className="w-full" type="submit">
@@ -556,6 +563,10 @@ export function AppSidebar({
             </form>
           </DropdownMenuContent>
         </DropdownMenu>
+        <ConnectAgentDialog
+          onOpenChange={setConnectAgentOpen}
+          open={connectAgentOpen}
+        />
       </SidebarFooter>
     </Sidebar>
   );
