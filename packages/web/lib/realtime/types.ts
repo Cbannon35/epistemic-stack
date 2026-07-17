@@ -193,6 +193,32 @@ export type TypingEvent = {
   ts: number;
 };
 
+/** Broadcast "merge:changed" — a merge request involving this room was
+ * opened/decided/withdrawn; refetch the MR list. Sent SERVER-side (the
+ * decision must reach the other room's channel too). An accepted merge's
+ * graph repaint rides the `merge@1` contribution insert, not this event. */
+export type MergeChangedEvent = {
+  mrId: string;
+  sourceId: string;
+  targetId: string;
+  action: "opened" | "accepted" | "declined" | "withdrawn";
+  actorName?: string;
+};
+
+/** Broadcast "agent-activity" — an external MCP agent acted in this room.
+ * Sent SERVER-side on every agent write; clients derive liveness from event
+ * recency (agents hold no websocket, so they can't appear in presence). */
+export type AgentActivityEvent = {
+  contributorId: string;
+  name: string;
+  /** Human-readable narration, e.g. `recorded claim "…"`. */
+  action: string;
+  /** Graph node the action produced/touched — the agent cursor glides here. */
+  nodeId?: string | null;
+  investigationId: string;
+  ts: number;
+};
+
 /** Broadcast "turn:pending" — a member's send was accepted; nudge readers. */
 export type TurnPendingEvent = { displayName: string };
 
@@ -218,6 +244,8 @@ export type RoomEventPayloads = {
   "comments:changed": CommentsChangedEvent;
   "challenges:changed": ChallengesChangedEvent;
   "credence:recorded": CredenceRecordedEvent;
+  "merge:changed": MergeChangedEvent;
+  "agent-activity": AgentActivityEvent;
   typing: TypingEvent;
   /** A completed @eve exchange or delegation summary joining the room-wide
    * eve memory ring (lib/realtime/eve-memory.ts). */
@@ -241,6 +269,8 @@ export const ROOM_EVENTS: readonly RoomEventName[] = [
   "comments:changed",
   "challenges:changed",
   "credence:recorded",
+  "merge:changed",
+  "agent-activity",
   "typing",
   "eve-memory",
 ];
@@ -257,3 +287,11 @@ export const isEveCursorId = (id: string) => id.startsWith(EVE_CURSOR_PREFIX);
 export const DELEGATE_CURSOR_PREFIX = "eve:dg:";
 export const delegateCursorId = (delegationId: string) =>
   `${DELEGATE_CURSOR_PREFIX}${delegationId}`;
+
+/** External MCP-agent cursors: one per agent contributor, driven by
+ * server-sent `agent-activity` events rather than a live pointer. */
+export const AGENT_CURSOR_PREFIX = "agent:";
+export const agentCursorId = (contributorId: string) =>
+  `${AGENT_CURSOR_PREFIX}${contributorId}`;
+export const isAgentCursorId = (id: string) =>
+  id.startsWith(AGENT_CURSOR_PREFIX);
