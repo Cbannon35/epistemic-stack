@@ -79,6 +79,7 @@ export function RoomProvider({
         (initial?.events as HandleMessageStreamEvent[] | null) ?? null,
       initialAuthors: initial?.authors ?? null,
       title: initial?.title ?? null,
+      seedFromCommons: initial?.seedFromCommons ?? null,
       forkedFrom: forkFrom ?? initial?.forkedFrom ?? null,
       forkSeedLoader: seedSource ? () => getForkSeed(seedSource) : undefined,
       onSessionStart,

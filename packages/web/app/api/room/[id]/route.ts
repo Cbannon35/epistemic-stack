@@ -27,6 +27,7 @@ export async function GET(
     title: inv.title,
     forkedFrom: inv.forkedFrom,
     forkPreludeCount: inv.forkPreludeCount,
+    seedFromCommons: inv.seedFromCommons,
     authors: await listTurnAuthors(id),
   });
 }

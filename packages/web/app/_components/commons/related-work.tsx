@@ -49,7 +49,8 @@ export function RelatedPriorWork() {
   }, [roomId]);
 
   useEffect(() => {
-    if (!(roomId && question) || hits !== null) {
+    // Blank-start rooms opted out of prior-work seeding entirely.
+    if (!(roomId && question && room.seedFromCommons) || hits !== null) {
       return;
     }
     const controller = new AbortController();
@@ -77,7 +78,7 @@ export function RelatedPriorWork() {
       // Aborted or offline — the strip just doesn't show.
     });
     return () => controller.abort();
-  }, [roomId, question, hits]);
+  }, [roomId, question, hits, room.seedFromCommons]);
 
   if (dismissed || !hits || hits.length === 0) {
     return null;

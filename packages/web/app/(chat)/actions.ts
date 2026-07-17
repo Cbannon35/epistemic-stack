@@ -33,6 +33,7 @@ export async function saveInvestigation(input: {
   events: unknown;
   forkedFrom?: string | null;
   eveSessionId?: string | null;
+  seedFromCommons?: boolean;
 }): Promise<void> {
   const user = await requireUser();
   if (!user) {
@@ -45,6 +46,7 @@ export async function saveInvestigation(input: {
     title: input.title.slice(0, 200),
     forkedFrom: input.forkedFrom ?? null,
     eveSessionId: input.eveSessionId ?? null,
+    seedFromCommons: input.seedFromCommons,
   });
   if (input.eveSessionId) {
     await claimEveSession({
@@ -88,6 +90,8 @@ export type InvestigationRoom = {
   forkedFrom: string | null;
   /** Copied transcript events on a fork row — the live-stream cursor offset. */
   forkPreludeCount: number | null;
+  /** Read-time seeding choice recorded on the row. */
+  seedFromCommons: boolean;
   authors: TurnAuthor[];
 };
 

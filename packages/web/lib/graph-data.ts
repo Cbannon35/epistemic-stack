@@ -241,7 +241,12 @@ export async function buildGraphData(
         id: c.canonicalId,
         kind: "claim" as const,
         label: c.text,
-        sources: mentionsByClaim.get(c.canonicalId)?.length ?? 0,
+        // DISTINCT sources, not mentions: two investigations citing the same
+        // (content-addressed) source is one independent source, not two —
+        // correlated evidence must not inflate the badge.
+        sources: new Set(
+          (mentionsByClaim.get(c.canonicalId) ?? []).map((m) => m.sourceId)
+        ).size,
         position: (d.position as string) ?? null,
         t: timeOf.get(c.contributionId) ?? null,
         challenges: challengeByNode[c.canonicalId],

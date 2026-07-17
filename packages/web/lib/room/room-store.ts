@@ -50,6 +50,9 @@ export type RoomSnapshot = {
   authors: ReadonlyMap<string, RoomAuthor>;
   /** Terminal session — no further sends will be accepted. */
   completed: boolean;
+  /** Read-time seeding choice: consult prior commons work (default) or start
+   * blank. Writes always land in the commons either way. */
+  seedFromCommons: boolean;
 };
 
 export type RoomBus = {
@@ -72,6 +75,7 @@ export type RoomStoreInit = {
   initialAuthors?: TurnAuthor[] | null;
   title?: string | null;
   forkedFrom?: string | null;
+  seedFromCommons?: boolean | null;
   forkSeedLoader?: () => Promise<{ title: string; seed: string } | null>;
   onSessionStart?: (sessionId: string) => void;
   onSaved?: () => void;
@@ -106,6 +110,7 @@ export class RoomStore {
   readonly #prelude: number;
   #seedToken: string | undefined;
   #title: string | null;
+  #seedFromCommons: boolean;
   #status: RoomStatus = "ready";
   #error: Error | undefined;
   #completed = false;
@@ -137,6 +142,7 @@ export class RoomStore {
     this.#prelude = init.preludeCount ?? 0;
     this.#seedToken = init.initialState?.continuationToken;
     this.#title = init.title ?? null;
+    this.#seedFromCommons = init.seedFromCommons ?? true;
     for (const a of init.initialAuthors ?? []) {
       this.#authors.set(a.turnId, {
         contributorId: a.contributorId,
@@ -175,6 +181,16 @@ export class RoomStore {
     this.#nudgeWaiter?.();
   }
 
+  /** Pre-first-send choice: start blank or compound on prior commons work.
+   * Locked once the investigation exists — the row persists it from then on. */
+  setSeedFromCommons(value: boolean): void {
+    if (this.#sessionId) {
+      return;
+    }
+    this.#seedFromCommons = value;
+    this.#emit();
+  }
+
   /** Live author attribution from another member's broadcast. */
   setAuthor(turnId: string, author: RoomAuthor): void {
     if (this.#authors.has(turnId)) {
@@ -204,10 +220,14 @@ export class RoomStore {
       // Cross-investigation compounding: fetch what OTHER investigations
       // already established about this question, in parallel with the send
       // state below. Best-effort — a miss just means no seed this turn.
-      const commonsPromise = getCommonsSendContext({
-        query: text,
-        excludeSessionId: this.#roomId ?? null,
-      }).catch(() => null);
+      // Blank-start rooms skip it entirely (read-time choice; writes still
+      // land in the commons).
+      const commonsPromise = this.#seedFromCommons
+        ? getCommonsSendContext({
+            query: text,
+            excludeSessionId: this.#roomId ?? null,
+          }).catch(() => null)
+        : Promise.resolve(null);
       let state: SessionState;
       let forkSeed: string | undefined;
       let pinnedComments: string | undefined;
@@ -253,6 +273,10 @@ export class RoomStore {
       if (commonsContext) {
         clientContext.commonsContext = commonsContext;
       }
+      if (!this.#seedFromCommons) {
+        clientContext.commonsPolicy =
+          "fresh-start: this investigation starts blank by choice. Do NOT call query_commons to seed from prior investigations — research the question fresh. Recording sources/claims to the commons is unchanged.";
+      }
 
       const session = this.#client.session(state);
       const res = await session.send({ message: text, clientContext });
@@ -283,6 +307,7 @@ export class RoomStore {
           },
           events: this.#events,
           forkedFrom: this.#init.forkedFrom ?? null,
+          seedFromCommons: this.#seedFromCommons,
         });
         if (!isRouted) {
           // Flipping the URL/live-row on a routed room would remount it
@@ -576,6 +601,7 @@ export class RoomStore {
       activeTurn: this.#activeTurn,
       authors: new Map(this.#authors),
       completed: this.#completed,
+      seedFromCommons: this.#seedFromCommons,
     };
   }
 

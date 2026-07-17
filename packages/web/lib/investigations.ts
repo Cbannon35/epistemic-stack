@@ -12,6 +12,7 @@ export async function upsertInvestigation(input: {
   title: string;
   forkedFrom?: string | null;
   eveSessionId?: string | null;
+  seedFromCommons?: boolean;
 }): Promise<void> {
   await db
     .insert(schema.investigations)
@@ -21,6 +22,7 @@ export async function upsertInvestigation(input: {
       title: input.title,
       forkedFrom: input.forkedFrom ?? null,
       eveSessionId: input.eveSessionId ?? null,
+      seedFromCommons: input.seedFromCommons ?? true,
     })
     // Insert-only: title, owner, and lineage are set once by whoever created
     // the session; later saves only touch the snapshot columns. Fork rows
