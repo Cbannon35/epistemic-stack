@@ -1,7 +1,7 @@
 import "server-only";
 import { randomUUID } from "node:crypto";
 import { createDb, schema } from "@epistack/db";
-import { and, eq, inArray, lte } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, lte } from "drizzle-orm";
 
 // GitHub-style fork: a durable branch of an investigation, cut at a specific
 // turn. The commons is never copied — the fork inherits ancestor claims via
@@ -51,6 +51,9 @@ type SlicedEvents = {
   /** Parent-side turn ids present in the slice (pre-remap). */
   preservedTurnIds: Set<string>;
   cutoffIso: string;
+  /** True when the forked turn is the parent's latest — a branch off the
+   * room as it stands, not a rewind. */
+  atTip: boolean;
 };
 
 // Cut the durable stream after the forked turn's last event. Session-level
@@ -89,7 +92,11 @@ function sliceEvents(events: ForkEvent[], turnId: string): SlicedEvents | null {
       preservedTurnIds.add(e.data.turnId);
     }
   }
-  return { events: slice, preservedTurnIds, cutoffIso };
+  // Tip check: no turn-scoped event after the cut belongs to a LATER turn.
+  const atTip = !events
+    .slice(cut + 1)
+    .some((e) => e.data?.turnId && e.data.turnId !== turnId);
+  return { events: slice, preservedTurnIds, cutoffIso, atTip };
 }
 
 function remapEvents(events: ForkEvent[]): ForkEvent[] {
@@ -189,9 +196,10 @@ async function copyComments(
   }
 }
 
-// Delegations carry no turn id — completed-before-the-cut is the closest
-// available "tied to preserved turns". Output node ids are commons-global and
-// stay valid across the fork.
+// Delegations carry no turn id — COMPLETED before the cut (updatedAt is the
+// completion moment) is the consistency rule: everything a copied delegation
+// surfaced then also predates the cutoff, so its findings are in the fork's
+// graph scope. Output node ids are commons-global and stay valid.
 async function copyDelegations(
   tx: Tx,
   parentId: string,
@@ -205,7 +213,7 @@ async function copyDelegations(
       and(
         eq(schema.delegations.sessionId, parentId),
         eq(schema.delegations.status, "completed"),
-        lte(schema.delegations.createdAt, cutoff)
+        lte(schema.delegations.updatedAt, cutoff)
       )
     );
   if (rows.length === 0) {
@@ -218,6 +226,68 @@ async function copyDelegations(
       sessionId: forkId,
     }))
   );
+}
+
+export type DeleteForkResult = { ok: true } | { error: string };
+
+// Deleting a fork removes the app-side branch record only — transcript copy,
+// comments, turn authorship, delegation records. Everything it recorded in
+// the COMMONS stays (append-only; those receipts belong to the ledger, not
+// the room). Root investigations are permanent, and a fork with forks of its
+// own can't be deleted (children inherit scope through it).
+export async function deleteFork(input: {
+  id: string;
+  userId: string;
+}): Promise<DeleteForkResult> {
+  const [row] = await db
+    .select({
+      forkedFrom: schema.investigations.forkedFrom,
+      contributorId: schema.investigations.contributorId,
+    })
+    .from(schema.investigations)
+    .where(eq(schema.investigations.id, input.id))
+    .limit(1);
+  if (!row) {
+    return { error: "that fork no longer exists" };
+  }
+  if (!row.forkedFrom) {
+    return { error: "only forks can be deleted — root investigations stay" };
+  }
+  if (row.contributorId !== input.userId) {
+    return { error: "only the fork's owner can delete it" };
+  }
+  const [child] = await db
+    .select({ id: schema.investigations.id })
+    .from(schema.investigations)
+    .where(eq(schema.investigations.forkedFrom, input.id))
+    .limit(1);
+  if (child) {
+    return { error: "this fork has forks of its own — delete those first" };
+  }
+  await db.transaction(async (tx) => {
+    await tx
+      .delete(schema.delegations)
+      .where(eq(schema.delegations.sessionId, input.id));
+    // Replies first (self-FK on parent_id), then roots.
+    await tx
+      .delete(schema.comments)
+      .where(
+        and(
+          eq(schema.comments.sessionId, input.id),
+          isNotNull(schema.comments.parentId)
+        )
+      );
+    await tx
+      .delete(schema.comments)
+      .where(eq(schema.comments.sessionId, input.id));
+    await tx
+      .delete(schema.investigationTurns)
+      .where(eq(schema.investigationTurns.sessionId, input.id));
+    await tx
+      .delete(schema.investigations)
+      .where(eq(schema.investigations.id, input.id));
+  });
+  return { ok: true };
 }
 
 export type ForkResult = { id: string } | { error: string };
@@ -246,7 +316,11 @@ export async function forkInvestigation(input: {
     };
   }
   const forkId = `fork_${randomUUID()}`;
-  const cutoff = new Date(sliced.cutoffIso);
+  // Tip forks branch off "the room as it stands NOW": rooms keep accruing
+  // commons writes after the last chat message (delegated runs, tours, cursor
+  // chat), and all of that belongs to the branch point. Only mid-history
+  // forks rewind to the forked message's own moment.
+  const cutoff = sliced.atTip ? new Date() : new Date(sliced.cutoffIso);
   const prelude = remapEvents(sliced.events);
 
   await db.transaction(async (tx) => {

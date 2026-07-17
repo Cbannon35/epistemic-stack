@@ -44,6 +44,20 @@ const THEME_COLOR_SCRIPT = `\
   updateThemeColor();
 })();`;
 
+// Comment highlights (CSS Custom Highlight API). Shipped as a raw <style> tag
+// because Turbopack's CSS parser rejects the ::highlight() pseudo-element and
+// would drop the rules from globals.css. One name per palette hue
+// (lib/realtime/color.ts HUES) — a thread's highlight wears its author's
+// color, matching their avatar and cursor. Private notes get a subtler wash.
+const HIGHLIGHT_HUES = [25, 60, 95, 175, 210, 250, 320, 350];
+const COMMENT_HIGHLIGHT_CSS = [
+  ...HIGHLIGHT_HUES.map(
+    (h) =>
+      `::highlight(comment-h${h}) { background-color: oklch(0.62 0.14 ${h} / 0.22); }`
+  ),
+  "::highlight(comment-private) { text-decoration: underline dashed oklch(0.62 0.02 250 / 0.6); text-underline-offset: 3px; background-color: oklch(0.62 0.02 250 / 0.12); }",
+].join("\n");
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -60,6 +74,12 @@ export default function RootLayout({
           // biome-ignore lint/security/noDangerouslySetInnerHtml: "Required"
           dangerouslySetInnerHTML={{
             __html: THEME_COLOR_SCRIPT,
+          }}
+        />
+        <style
+          // biome-ignore lint/security/noDangerouslySetInnerHtml: static CSS the bundler can't parse (::highlight)
+          dangerouslySetInnerHTML={{
+            __html: COMMENT_HIGHLIGHT_CSS,
           }}
         />
       </head>

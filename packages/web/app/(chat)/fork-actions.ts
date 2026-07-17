@@ -1,7 +1,12 @@
 "use server";
 
 import { ensureContributor } from "@/lib/contributors";
-import { type ForkResult, forkInvestigation } from "@/lib/fork";
+import {
+  type DeleteForkResult,
+  deleteFork,
+  type ForkResult,
+  forkInvestigation,
+} from "@/lib/fork";
 import { createClient } from "@/lib/supabase/server";
 
 // Fork = a durable app-side branch (transcript prelude + authorship + comments
@@ -30,4 +35,14 @@ export async function forkInvestigationAction(input: {
     turnId: input.turnId,
     userId: user.id,
   });
+}
+
+export async function deleteForkAction(input: {
+  id: string;
+}): Promise<DeleteForkResult> {
+  const user = await requireUser();
+  if (!user) {
+    return { error: "sign in to delete a fork" };
+  }
+  return await deleteFork({ id: input.id, userId: user.id });
 }

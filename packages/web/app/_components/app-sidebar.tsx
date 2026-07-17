@@ -3,13 +3,16 @@
 import {
   ChevronRightIcon,
   GitForkIcon,
+  GitMergeIcon,
   LogOutIcon,
+  MoreHorizontalIcon,
   PencilIcon,
   PlusIcon,
   SearchIcon,
+  Trash2Icon,
 } from "lucide-react";
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, usePathname, useRouter } from "next/navigation";
 import { Collapsible as CollapsiblePrimitive } from "radix-ui";
 import { type FormEvent, useEffect, useState } from "react";
 import { CommonsSearchMenuItem } from "@/app/_components/commons/commons-search";
@@ -19,6 +22,7 @@ import { AvatarStack } from "@/app/_components/presence/presence-avatars";
 import { useRoom } from "@/app/_components/room-provider";
 import { signOut } from "@/app/(auth)/actions";
 import { renameInvestigationAction } from "@/app/(chat)/actions";
+import { deleteForkAction } from "@/app/(chat)/fork-actions";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -29,6 +33,7 @@ import {
 import { Input } from "@/components/ui/input";
 import {
   Popover,
+  PopoverAnchor,
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
@@ -159,6 +164,145 @@ function RenameAction({
   );
 }
 
+// GitHub-style fork controls: rename, merge (placeholder for now), and delete
+// behind an explicit confirmation. Deleting removes only the app-side branch
+// record — commons receipts are append-only and stay.
+function ForkRowMenu({
+  inv,
+  className,
+}: {
+  inv: InvestigationListItem;
+  className?: string;
+}) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const [mode, setMode] = useState<"rename" | "delete" | null>(null);
+  const [title, setTitle] = useState(inv.title);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const close = () => {
+    setMode(null);
+    setError(null);
+  };
+  const rename = (event: FormEvent) => {
+    event.preventDefault();
+    const trimmed = title.trim();
+    if (!trimmed || busy) {
+      return;
+    }
+    setBusy(true);
+    renameInvestigationAction({ id: inv.id, title: trimmed })
+      .then(() => {
+        close();
+        router.refresh();
+      })
+      .finally(() => setBusy(false));
+  };
+  const remove = () => {
+    if (busy) {
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    deleteForkAction({ id: inv.id })
+      .then((res) => {
+        if ("error" in res) {
+          setError(res.error);
+          return;
+        }
+        close();
+        if (pathname === `/i/${inv.id}`) {
+          router.push("/");
+        }
+        router.refresh();
+      })
+      .finally(() => setBusy(false));
+  };
+
+  return (
+    <Popover
+      onOpenChange={(open) => (open ? null : close())}
+      open={mode !== null}
+    >
+      <DropdownMenu>
+        <PopoverAnchor asChild>
+          <DropdownMenuTrigger asChild>
+            <SidebarMenuAction
+              aria-label="Fork actions"
+              className={className}
+              showOnHover
+              title="Fork actions"
+            >
+              <MoreHorizontalIcon />
+            </SidebarMenuAction>
+          </DropdownMenuTrigger>
+        </PopoverAnchor>
+        <DropdownMenuContent align="start" side="right">
+          <DropdownMenuItem
+            onSelect={() => {
+              setTitle(inv.title);
+              setMode("rename");
+            }}
+          >
+            <PencilIcon /> Rename
+          </DropdownMenuItem>
+          <DropdownMenuItem disabled>
+            <GitMergeIcon /> Merge into parent
+            <span className="ml-auto text-[10px] text-muted-foreground">
+              soon
+            </span>
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onSelect={() => setMode("delete")}
+            variant="destructive"
+          >
+            <Trash2Icon /> Delete fork…
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <PopoverContent align="start" className="w-72 p-3" side="right">
+        {mode === "rename" ? (
+          <form className="flex items-center gap-2" onSubmit={rename}>
+            <Input
+              autoFocus
+              onChange={(e) => setTitle(e.target.value)}
+              value={title}
+            />
+            <Button disabled={!title.trim() || busy} size="sm" type="submit">
+              Save
+            </Button>
+          </form>
+        ) : (
+          <div className="space-y-2">
+            <p className="font-medium text-sm">Delete this fork?</p>
+            <p className="text-muted-foreground text-xs">
+              Its transcript, comments and delegation records go away. Claims
+              and sources it recorded stay in the commons — receipts are
+              append-only.
+            </p>
+            {error ? <p className="text-destructive text-xs">{error}</p> : null}
+            <div className="flex justify-end gap-2">
+              <Button onClick={close} size="sm" type="button" variant="ghost">
+                Cancel
+              </Button>
+              <Button
+                disabled={busy}
+                onClick={remove}
+                size="sm"
+                type="button"
+                variant="destructive"
+              >
+                {busy ? "Deleting…" : "Delete fork"}
+              </Button>
+            </div>
+          </div>
+        )}
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 type NodeContext = {
   me: { userId: string; displayName: string };
   currentId: string | null;
@@ -208,7 +352,13 @@ function InvestigationNode({
           />
         </Link>
       </SidebarMenuButton>
-      {mine ? (
+      {mine && inv.forkedFrom ? (
+        <ForkRowMenu
+          className={forks.length > 0 ? "right-6" : undefined}
+          inv={inv}
+        />
+      ) : null}
+      {mine && !inv.forkedFrom ? (
         <RenameAction
           className={forks.length > 0 ? "right-6" : undefined}
           inv={inv}

@@ -525,40 +525,9 @@ textarea:focus-visible {
   border-radius: 10px;
 }
 
-/* ── comment highlights (CSS Custom Highlight API) ─────────────────────────
-   One name per palette hue (lib/realtime/color.ts HUES) — a thread's
-   highlight wears its author's color, matching their avatar and cursor. */
-::highlight(comment-h25) {
-  background-color: oklch(0.62 0.14 25 / 0.22);
-}
-::highlight(comment-h60) {
-  background-color: oklch(0.62 0.14 60 / 0.22);
-}
-::highlight(comment-h95) {
-  background-color: oklch(0.62 0.14 95 / 0.22);
-}
-::highlight(comment-h175) {
-  background-color: oklch(0.62 0.14 175 / 0.22);
-}
-::highlight(comment-h210) {
-  background-color: oklch(0.62 0.14 210 / 0.22);
-}
-::highlight(comment-h250) {
-  background-color: oklch(0.62 0.14 250 / 0.22);
-}
-::highlight(comment-h320) {
-  background-color: oklch(0.62 0.14 320 / 0.22);
-}
-::highlight(comment-h350) {
-  background-color: oklch(0.62 0.14 350 / 0.22);
-}
-
-/* Private notes: subtler wash + dashed underline — visibly "just yours". */
-::highlight(comment-private) {
-  text-decoration: underline dashed oklch(0.62 0.02 250 / 0.6);
-  text-underline-offset: 3px;
-  background-color: oklch(0.62 0.02 250 / 0.12);
-}
+/* Comment-highlight (::highlight) rules live in app/layout.tsx as a raw
+   <style> tag — Turbopack's CSS parser rejects the ::highlight() pseudo
+   element and would drop the rules. */
 
 .ProseMirror {
   outline: none;
