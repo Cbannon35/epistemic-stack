@@ -2,7 +2,7 @@
 
 import type { EveMessage } from "eve/client";
 import { useRouter } from "next/navigation";
-import { type FormEvent, type ReactNode, useRef } from "react";
+import { type FormEvent, type ReactNode, useRef, useState } from "react";
 import { CatchUpDigest } from "@/app/_components/awareness/digest-card";
 import {
   TypingLine,
@@ -21,6 +21,7 @@ import { EmptyRoomState } from "@/app/_components/onboarding/room-hints";
 import { PresenceAvatars } from "@/app/_components/presence/presence-avatars";
 import { useRoom } from "@/app/_components/room-provider";
 import { NodeMentionPicker } from "@/app/_components/weave/node-mention";
+import { forkInvestigationAction } from "@/app/(chat)/fork-actions";
 import {
   Conversation,
   ConversationContent,
@@ -65,12 +66,30 @@ export function AgentChat({ headerActions }: { headerActions?: ReactNode }) {
       .join("\n\n")
       .trim();
 
-  const fork = room.session.sessionId
-    ? () =>
-        router.push(
-          `/?fork=${encodeURIComponent(room.session.sessionId as string)}`
-        )
-    : undefined;
+  // GitHub-style fork at a specific response: a durable branch row is created
+  // immediately (transcript prelude + comments + authorship copied), then we
+  // navigate into it. refresh() lands the row in everyone's sidebar.
+  const [forkingId, setForkingId] = useState<string | null>(null);
+  const [forkError, setForkError] = useState<string | null>(null);
+  const forkAt = (m: EveMessage) => {
+    const turnId = m.metadata?.turnId;
+    const parentId = room.roomId;
+    if (!(turnId && parentId) || forkingId) {
+      return;
+    }
+    setForkingId(m.id);
+    setForkError(null);
+    forkInvestigationAction({ parentId, turnId })
+      .then((res) => {
+        if ("id" in res) {
+          router.push(`/i/${res.id}`);
+          router.refresh();
+        } else {
+          setForkError(res.error);
+        }
+      })
+      .finally(() => setForkingId(null));
+  };
 
   const handleSubmit = (message: { text?: string }, event: FormEvent) => {
     event.preventDefault();
@@ -142,7 +161,15 @@ export function AgentChat({ headerActions }: { headerActions?: ReactNode }) {
                       ))}
                     </MessageContent>
                     {m.role === "assistant" && !(busy && isLast) ? (
-                      <MessageActionsBar onFork={fork} text={textOf(m)} />
+                      <MessageActionsBar
+                        forkPending={forkingId === m.id}
+                        onFork={
+                          m.metadata?.turnId && room.roomId
+                            ? () => forkAt(m)
+                            : undefined
+                        }
+                        text={textOf(m)}
+                      />
                     ) : null}
                   </Message>
                 );
@@ -156,9 +183,9 @@ export function AgentChat({ headerActions }: { headerActions?: ReactNode }) {
 
         <RelatedPriorWork />
 
-        {room.error ? (
+        {room.error || forkError ? (
           <p className="mx-auto w-full max-w-3xl px-4 pb-2 text-destructive text-sm">
-            {room.error.message}
+            {room.error?.message ?? forkError}
           </p>
         ) : null}
 

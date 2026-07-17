@@ -15,9 +15,11 @@ const BUTTON_CLASS =
 export function MessageActionsBar({
   text,
   onFork,
+  forkPending = false,
 }: {
   text: string;
   onFork?: () => void;
+  forkPending?: boolean;
 }) {
   const [copied, setCopied] = useState(false);
   useEffect(() => {
@@ -51,11 +53,14 @@ export function MessageActionsBar({
         <button
           aria-label="Fork investigation"
           className={BUTTON_CLASS}
+          disabled={forkPending}
           onClick={onFork}
-          title="Fork — branch a new investigation that starts from this one's claim graph"
+          title="Fork — branch the investigation from this response (transcript and graph up to here)"
           type="button"
         >
-          <GitForkIcon className="size-3.5" />
+          <GitForkIcon
+            className={forkPending ? "size-3.5 animate-pulse" : "size-3.5"}
+          />
         </button>
       ) : null}
     </div>
