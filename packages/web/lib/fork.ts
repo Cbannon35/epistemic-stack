@@ -265,6 +265,22 @@ export async function deleteFork(input: {
     return { error: "this fork has forks of its own — delete those first" };
   }
   await db.transaction(async (tx) => {
+    // Merge-request tidy-up: open proposals FROM this fork are withdrawn (the
+    // branch is gone); requests TARGETING it lose their room and are removed.
+    // ACCEPTED outgoing merges are untouched — their materialized hops keep
+    // resolving against the commons, which survives fork deletion.
+    await tx
+      .update(schema.mergeRequests)
+      .set({ status: "withdrawn", updatedAt: new Date() })
+      .where(
+        and(
+          eq(schema.mergeRequests.sourceId, input.id),
+          eq(schema.mergeRequests.status, "open")
+        )
+      );
+    await tx
+      .delete(schema.mergeRequests)
+      .where(eq(schema.mergeRequests.targetId, input.id));
     await tx
       .delete(schema.delegations)
       .where(eq(schema.delegations.sessionId, input.id));

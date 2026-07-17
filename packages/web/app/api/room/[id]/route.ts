@@ -25,6 +25,7 @@ export async function GET(
     session: inv.sessionState,
     events: inv.events,
     title: inv.title,
+    ownerId: inv.contributorId,
     forkedFrom: inv.forkedFrom,
     forkPreludeCount: inv.forkPreludeCount,
     seedFromCommons: inv.seedFromCommons,
