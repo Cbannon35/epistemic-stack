@@ -85,4 +85,7 @@ cd packages/db  && bunx tsc --noEmit && bunx biome check .
 | Credences / belief timeline | `lib/credences.ts`, `app/_components/graph/credence-section.tsx`, time slider in `graph-panel.tsx` |
 | eve agent + tools | `agent/agent.ts`, `agent/instructions.md`, `agent/tools/*.ts`, `agent/lib/commons.ts` |
 | People layer (person cards, follow, belief compare) | `app/_components/people/`, `app/(chat)/people-actions.ts`, `lib/people.ts` |
+| Merge requests (fork → ancestor scope adoption) | `lib/merge.ts`, `app/_components/merge/`, `app/(chat)/merge-actions.ts`, `app/api/merge/` |
+| Releases (citable versions, public pages) | `lib/releases.ts`, `lib/release-types.ts`, `app/releases/[id]/`, `app/_components/releases/` |
+| Agent multiplayer MCP (keys, write tools, liveness) | `lib/agent-keys.ts`, `lib/mcp/register-agent-tools.ts`, `app/api/mcp/agent/`, `app/_components/agents/` |
 | Realtime wire protocol | `lib/realtime/types.ts` (event catalog, identity model) |

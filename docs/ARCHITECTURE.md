@@ -68,6 +68,9 @@ Everything lives in one Postgres (local Supabase). Drizzle ORM, snake_case colum
 | `investigation_turns` | (sessionId, turnId) → contributor: per-turn authorship. Joined with `contributions.turn_id` this yields "recorded by eve · during a turn asked by chris". |
 | `comments` | Chat-anchored threads: quote + prefix/suffix re-anchoring, `visibility public\|private`, one-shot model-context flags (`context_queued`, `context_consumed_turn`). |
 | `delegations` | Delegated eve investigations: delegator, brief, plan, step log, status, heartbeat, output contribution ids. |
+| `merge_requests` | Fork → ancestor scope-adoption proposals: proposer, note, status, reviewer, and `merged_hops` (the scope frozen at accept). |
+| `releases` | Named citable checkpoints: per-investigation version, title snapshot, notes, `cutoff` + materialized `hops` (the frozen recipe). |
+| `agent_keys` | Bearer capabilities for the write MCP endpoint: sha256 token hash → agent contributor, minted-by, revoked-at. |
 
 **Migration workflow:** edit `schema.ts` → `bun run db:generate` → `bun run db:migrate`.
 Additive/nullable columns only; never renumber or edit applied migrations. Migration `0004`
@@ -250,6 +253,62 @@ Fork button → `/?fork=<id>` → new investigation with `forked_from` set and a
 source room's last answer in `clientContext`. Graph scope includes the full ancestor chain,
 so forks inherit their lineage's evidence while diverging freely.
 
+### 7.9 Merge requests (`lib/merge.ts`, `app/_components/merge/`)
+
+The path back from a fork. Merging is **scope adoption, not content copying**: the fork's
+contributions already live in the commons, and acceptance widens the target lineage's read
+scope. `getScopeHops()` (lib/investigations.ts) generalizes the ancestor chain into
+`ScopeHop[]` = `{sessionIds, cutoff}[]` — fork hops plus, for each investigation in the
+chain, hops adopted through accepted merges (time-composed like fork cutoffs). At accept
+the source's not-yet-covered hops are **materialized** onto the MR row (cutoffs min-composed
+with the accept moment), so what the reviewer approved is frozen and survives later source
+deletion. Accept also writes a `merge@1` contribution (sessionId = target) — its insert
+repaints every client through the existing realtime publication. Diff (`computeMergeDiff`)
+is pure addition; the review panel (graph toolbar "merges" pill) lists incoming nodes with
+provenance and can **preview in graph** (`/api/graph?mergePreview=<mr>`, emerald halo via
+`data-incoming`). Permissions: anyone proposes/withdraws; the **target owner** decides.
+`merge:changed` is broadcast **server-side** to both rooms (`lib/realtime/server-broadcast.ts`
+— Realtime's REST broadcast endpoint, also used by agent liveness). `deleteFork` withdraws
+open outgoing MRs and deletes MRs targeting the fork; accepted merges keep working.
+
+### 7.10 Releases (`lib/releases.ts`, `app/releases/[id]/`, `app/_components/releases/`)
+
+Named, citable checkpoints. A release stores a **recipe** — title snapshot, per-investigation
+version (`max+1`), materialized `hops`, and a `cutoff` — never content: immutability falls
+out of time-capping the append-only ledger (`buildGraphData(null, {hopsOverride, asOf})`,
+which also caps commons-wide credences/challenges so the citation is faithful). Public page
+`/releases/<id>` (ISR, unauthenticated, mirrors `/topics/<slug>`), JSON export at
+`/api/releases/[id]/export`, plain + BibTeX citations (`lib/release-types.ts`). Cut from the
+graph toolbar's "release" pill; any signed-in contributor may cut (pure addition; the
+`release@1` receipt carries accountability). Survives room rename/deletion by design.
+
+### 7.11 Agent multiplayer MCP (`lib/agent-keys.ts`, `lib/mcp/register-agent-tools.ts`, `app/api/mcp/agent/`)
+
+External agents as first-class contributors. A signed-in user mints an `esk_` bearer key
+("Connect an agent", sidebar footer) → agent contributor row + sha256-stored key
+(`agent_keys`). `/api/mcp/agent/mcp` with `Authorization: Bearer esk_…` serves the full
+read surface **plus** write tools — `record_source/claim/relation/hypothesis/crux`,
+`link_claim_to_hypothesis`, `record_credence`, `file_challenge`,
+`create_investigation`/`list_investigations`/`get_investigation_graph` — all through
+`agent/lib/commons.ts` (same embedding dedup + receipts as eve; commons writes are
+contributor-parameterized, defaulting to eve). Liveness: every write fires a server-side
+`agent-activity` broadcast; clients derive an active-agents map (`agents-bus.ts`, 75s idle
+expiry) rendering toolbar chips (`agent-chips.tsx`) and a per-agent graph cursor riding the
+tour/delegation cursor registry (`use-agent-activity.ts`). Agents can't hold websocket
+presence — recency-derived liveness is the honest substitute. Graph repaints need nothing:
+agent writes insert contributions like any other.
+
+### 7.12 Vending surface — topics, public pages, MCP (`lib/topics.ts`, `app/topics/`, `app/api/mcp/`)
+
+(Pre-existing, previously undocumented here.) `topics` rows store a living slice **recipe**
+(seed FTS query + pinned claims); membership resolves at read time (`resolveTopicSlice`:
+seeds → 2-hop traversal, ≤150 nodes). Surfaces: the public gallery `/topics` and per-topic
+pages (ISR, unauthenticated), JSON export `/api/topics/[slug]/export`, a commons-wide
+read-only MCP server at `/api/mcp` and per-topic scoped servers at `/api/mcp/<slug>/mcp`
+(`lib/mcp/register-tools.ts`; `search`/`fetch` follow ChatGPT's data-connector contract).
+Publish dialog lives in the graph toolbar's commons mode. Consuming is public; publishing
+requires auth.
+
 ## 8. HTTP surface (`app/api/`)
 
 | Route | Purpose |
@@ -259,6 +318,10 @@ so forks inherit their lineage's evidence while diverging freely.
 | `POST /api/tour` | Answer-or-tour generation (§7.1) |
 | `POST /api/delegate`, `/step`, `/cancel`; `GET ?investigation=` | Delegated investigations (§7.6) |
 | `GET /api/commons/search?q=` | Cross-investigation full-text search (§7.4) |
+| `GET /api/merge?investigation=`, `GET /api/merge/diff` | Merge requests + diffs (§7.9) |
+| `GET /api/releases?investigation=`, `GET /api/releases/[id]/export` | Release list (auth) + public frozen export (§7.10) |
+| `/api/mcp`, `/api/mcp/[slug]/mcp` | Public read-only MCP servers, commons-wide + per-topic (§7.12) |
+| `/api/mcp/agent/mcp` | Write-capable agent MCP (Bearer `esk_` key, §7.11) |
 | `POST /api/comments/eve` | @eve reply inside a comment thread |
 | `/eve/v1/*` | eve's own surface (sessions, streams) — mounted by `withEve()` |
 
