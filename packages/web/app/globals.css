@@ -317,6 +317,15 @@ textarea:focus-visible {
   animation: node-arrive 250ms var(--ease-spring) backwards;
 }
 
+/* Merge-preview diff: nodes the room would ADOPT wear an emerald halo while
+ * the reviewer previews an incoming merge request. */
+.graph-node[data-incoming] {
+  outline: 2px solid oklch(0.72 0.17 160 / 0.9);
+  outline-offset: 4px;
+  border-radius: 10px;
+  box-shadow: 0 0 18px oklch(0.72 0.17 160 / 0.35);
+}
+
 @media (hover: hover) and (pointer: fine) {
   .react-flow__node:hover .graph-node {
     box-shadow: var(--shadow-float);

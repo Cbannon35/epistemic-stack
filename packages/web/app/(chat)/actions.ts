@@ -87,6 +87,8 @@ export type InvestigationRoom = {
   session: unknown;
   events: unknown;
   title: string;
+  /** The investigation's owner (contributor id) — merge reviews are theirs. */
+  ownerId: string | null;
   forkedFrom: string | null;
   /** Copied transcript events on a fork row — the live-stream cursor offset. */
   forkPreludeCount: number | null;

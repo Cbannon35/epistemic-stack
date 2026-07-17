@@ -7,11 +7,7 @@ import {
   listCredences,
   summarizeCredences,
 } from "@/lib/credences";
-import {
-  getScopeHops,
-  minCutoff,
-  type ScopeHop,
-} from "@/lib/investigations";
+import { getScopeHops, minCutoff, type ScopeHop } from "@/lib/investigations";
 
 // Read the commons as a graph (nodes + edges + per-node detail). With an
 // investigation id, scope to what that investigation — and its fork ancestors —

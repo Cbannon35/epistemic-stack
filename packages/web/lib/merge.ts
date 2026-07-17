@@ -14,6 +14,11 @@ import {
   minCutoff,
   type ScopeHop,
 } from "@/lib/investigations";
+import type {
+  MergeDiffCounts,
+  MergeRequestRecord,
+  MergeStatus,
+} from "@/lib/merge-types";
 
 // Merge requests: a fork proposing itself back into an ancestor's visible
 // scope. Merging is SCOPE ADOPTION, not content copying — the fork's
@@ -27,32 +32,13 @@ const db = createDb();
 const contentHash = (text: string): string =>
   createHash("sha256").update(text).digest("hex").slice(0, 32);
 
-export type MergeStatus = "open" | "accepted" | "declined" | "withdrawn";
-
-export type MergeRequestRecord = {
-  id: string;
-  sourceId: string;
-  targetId: string;
-  sourceTitle: string | null;
-  targetTitle: string | null;
-  proposerId: string;
-  proposerName: string;
-  note: string | null;
-  status: MergeStatus;
-  reviewerId: string | null;
-  reviewerName: string | null;
-  decidedAt: string | null;
-  decisionNote: string | null;
-  createdAt: string;
-};
-
 export type MergeDiff = {
   incoming: {
     nodes: GraphNodeData[];
     edges: GraphEdgeData[];
     provenance: Record<string, NodeProvenance>;
   };
-  counts: { incoming: number; shared: number; targetOnly: number };
+  counts: MergeDiffCounts;
 };
 
 /** The source's live hops not already covered by the target's scope — what

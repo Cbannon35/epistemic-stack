@@ -10,12 +10,15 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import {
+  GitMergeIcon,
+  GitPullRequestArrowIcon,
   ListTreeIcon,
   Maximize2Icon,
   PanelRightCloseIcon,
   PlusIcon,
   RefreshCwIcon,
   ScrollTextIcon,
+  TagIcon,
   XIcon,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -38,11 +41,15 @@ import {
   type InspectorSubject,
 } from "@/app/_components/graph/types";
 import { JournalPanel } from "@/app/_components/journal/journal-panel";
+import { MergePanel } from "@/app/_components/merge/merge-panel";
+import { ProposeMergeDialog } from "@/app/_components/merge/propose-merge-dialog";
 import { CompareBeliefsPanel } from "@/app/_components/people/compare-beliefs-panel";
 import { peopleBus, usePeopleState } from "@/app/_components/people/people-bus";
 import { CursorLayer } from "@/app/_components/presence/cursor-layer";
 import { PresenceAvatars } from "@/app/_components/presence/presence-avatars";
+import { ReleaseDialog } from "@/app/_components/releases/release-dialog";
 import { useRoom } from "@/app/_components/room-provider";
+import type { MergeRequestRecord } from "@/lib/merge-types";
 import { createClient } from "@/lib/supabase/client";
 
 const pillClass =
@@ -119,6 +126,15 @@ export function GraphPanel({
   const [showJournal, setShowJournal] = useState(false);
   // A source opened in the in-page preview (rail card click).
   const [previewSource, setPreviewSource] = useState<GraphNode | null>(null);
+  // Merge requests involving this room + the in-graph diff preview.
+  const [mergeRequests, setMergeRequests] = useState<MergeRequestRecord[]>([]);
+  const [showMerges, setShowMerges] = useState(false);
+  const [mergePreview, setMergePreview] = useState<{
+    mrId: string;
+    ids: string[];
+  } | null>(null);
+  const [proposeOpen, setProposeOpen] = useState(false);
+  const [releaseOpen, setReleaseOpen] = useState(false);
 
   const sigRef = useRef("");
   // Last counts per scope — same-scope growth is narrated on the ticker.
@@ -137,6 +153,8 @@ export function GraphPanel({
   dataRef.current = data;
   const positionsRef = useRef(positions);
   positionsRef.current = positions;
+  const mergePreviewRef = useRef(mergePreview);
+  mergePreviewRef.current = mergePreview;
 
   // Chat tool cards focus their graph node through the bus: reveal the kind's
   // filter if hidden, select, and glide the camera over.
@@ -204,9 +222,14 @@ export function GraphPanel({
       setPositions(new Map());
       return;
     }
+    // A merge preview widens the scope by the source's live hops — the
+    // reviewer sees the graph as it WOULD look after accepting.
+    const preview = commons ? null : mergePreviewRef.current;
     const url = commons
       ? "/api/graph"
-      : `/api/graph?investigation=${encodeURIComponent(inv as string)}`;
+      : `/api/graph?investigation=${encodeURIComponent(inv as string)}${
+          preview ? `&mergePreview=${encodeURIComponent(preview.mrId)}` : ""
+        }`;
     const res = await fetch(url);
     if (!res.ok) {
       return;
@@ -215,7 +238,7 @@ export function GraphPanel({
     // Credence and challenge counts ride the signature: belief-only or
     // dispute-only changes add no nodes or edges but must still repaint
     // (node bars, dispute badges, inspector, assessment panel).
-    const sig = `${commons ? "commons" : inv}:${d.nodes.length}:${d.edges.length}:${d.counts.credences ?? 0}:${d.counts.challenges ?? 0}`;
+    const sig = `${commons ? "commons" : inv}:${preview?.mrId ?? ""}:${d.nodes.length}:${d.edges.length}:${d.counts.credences ?? 0}:${d.counts.challenges ?? 0}`;
     if (!force && sig === sigRef.current) {
       return;
     }
@@ -279,6 +302,50 @@ export function GraphPanel({
       supabase.removeChannel(channel);
     };
   }, [load]);
+
+  // Merge requests involving this room: fetched on boot, refetched on the
+  // server-broadcast `merge:changed` (which reaches BOTH rooms' channels).
+  const loadMerges = useCallback(async () => {
+    const inv = invRef.current;
+    if (!inv) {
+      setMergeRequests([]);
+      return;
+    }
+    const res = await fetch(
+      `/api/merge?investigation=${encodeURIComponent(inv)}`
+    );
+    if (!res.ok) {
+      return;
+    }
+    const body = (await res.json()) as {
+      mergeRequests: MergeRequestRecord[];
+    };
+    setMergeRequests(body.mergeRequests);
+  }, []);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: loadMerges reads the scope via a ref; the effect must re-run when it changes
+  useEffect(() => {
+    setMergePreview(null);
+    setShowMerges(false);
+    loadMerges();
+  }, [loadMerges, investigation]);
+  const channelOn = room.channel.on;
+  useEffect(
+    () =>
+      channelOn("merge:changed", () => {
+        loadMerges();
+        load(true);
+      }),
+    [channelOn, loadMerges, load]
+  );
+  // Preview toggles refetch the graph with/without the widened scope.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: mergePreview is read via a ref inside load; this effect is its refetch trigger
+  useEffect(() => {
+    load(true);
+  }, [load, mergePreview]);
+
+  const openMergeCount = mergeRequests.filter(
+    (m) => m.status === "open"
+  ).length;
 
   // People layer: "Compare beliefs" opens the credence-gap panel here.
   const { compare } = usePeopleState();
@@ -352,12 +419,16 @@ export function GraphPanel({
       detailLevel < CLAIM_BUDGETS.length
         ? CLAIM_BUDGETS[detailLevel]
         : Number.POSITIVE_INFINITY;
+    // A merge preview's incoming nodes always show — hiding the diff behind
+    // the first-glance budget would make the review meaningless.
+    const incoming = new Set(mergePreview?.ids ?? []);
     const tierHidden = new Set<string>();
     for (const n of data.nodes) {
       if (
         n.kind === "claim" &&
         (claimRank.get(n.id) ?? 0) >= claimBudget &&
         !revealed.has(n.id) &&
+        !incoming.has(n.id) &&
         n.id !== selectedId
       ) {
         tierHidden.add(n.id);
@@ -381,7 +452,7 @@ export function GraphPanel({
       .filter((n) => n.kind === "source")
       .sort((a, b) => a.id.localeCompare(b.id));
     for (const n of sourceNodes) {
-      if (revealed.has(n.id) || n.id === selectedId) {
+      if (revealed.has(n.id) || n.id === selectedId || incoming.has(n.id)) {
         continue;
       }
       const claims = claimsOfSource.get(n.id);
@@ -420,6 +491,7 @@ export function GraphPanel({
           challenges: n.challenges,
           detail: n.detail,
           study: Boolean(n.detail?.peer_reviewed),
+          incoming: incoming.has(n.id),
         },
       }));
     const rfEdges: Edge[] = data.edges
@@ -481,6 +553,7 @@ export function GraphPanel({
     claimRank,
     detailLevel,
     revealed,
+    mergePreview,
   ]);
 
   // The Inspector's subject: a node, or a relation edge dressed as one (same
@@ -684,6 +757,41 @@ export function GraphPanel({
               >
                 <ScrollTextIcon className="size-3" /> journal
               </button>
+              <button
+                className={`${pillClass} ${
+                  showMerges
+                    ? "border-border bg-muted text-foreground"
+                    : "border-border/60 text-muted-foreground hover:bg-muted hover:text-foreground"
+                } inline-flex items-center gap-1`}
+                onClick={() => setShowMerges((v) => !v)}
+                title="Merge requests — forks proposing their work into this room's scope"
+                type="button"
+              >
+                <GitMergeIcon className="size-3" /> merges
+                {openMergeCount > 0 ? (
+                  <span className="rounded-full bg-amber-500/20 px-1 font-medium text-[9px] text-amber-600 dark:text-amber-400">
+                    {openMergeCount}
+                  </span>
+                ) : null}
+              </button>
+              {room.roomMeta.forkedFrom ? (
+                <button
+                  className={`${pillClass} border-border/60 text-muted-foreground hover:bg-muted hover:text-foreground inline-flex items-center gap-1`}
+                  onClick={() => setProposeOpen(true)}
+                  title="Propose merging this fork's work back into its parent"
+                  type="button"
+                >
+                  <GitPullRequestArrowIcon className="size-3" /> propose merge
+                </button>
+              ) : null}
+              <button
+                className={`${pillClass} border-border/60 text-muted-foreground hover:bg-muted hover:text-foreground inline-flex items-center gap-1`}
+                onClick={() => setReleaseOpen(true)}
+                title="Cut a named, citable release of this investigation's graph"
+                type="button"
+              >
+                <TagIcon className="size-3" /> release
+              </button>
             </>
           )}
           {timeBounds ? (
@@ -868,6 +976,25 @@ export function GraphPanel({
         />
       ) : null}
 
+      {showMerges && !commonsMode && investigation ? (
+        <MergePanel
+          investigation={investigation}
+          isOwner={room.roomMeta.ownerId === room.me.userId}
+          meId={room.me.userId}
+          mergeRequests={mergeRequests}
+          onChanged={() => {
+            loadMerges();
+            load(true);
+          }}
+          onClose={() => {
+            setShowMerges(false);
+            setMergePreview(null);
+          }}
+          onPreview={setMergePreview}
+          previewMrId={mergePreview?.mrId ?? null}
+        />
+      ) : null}
+
       {timeCap != null && timeBounds ? (
         <GraphTimeSlider
           max={timeBounds.max}
@@ -908,6 +1035,24 @@ export function GraphPanel({
         pinnedClaimIds={selected?.kind === "claim" ? [selected.id] : []}
         seedQuery={commonsQuery}
       />
+
+      {investigation && room.roomMeta.forkedFrom ? (
+        <ProposeMergeDialog
+          onOpenChange={setProposeOpen}
+          onProposed={loadMerges}
+          open={proposeOpen}
+          sourceId={investigation}
+          targetId={room.roomMeta.forkedFrom}
+        />
+      ) : null}
+
+      {investigation ? (
+        <ReleaseDialog
+          investigation={investigation}
+          onOpenChange={setReleaseOpen}
+          open={releaseOpen}
+        />
+      ) : null}
     </div>
   );
 }

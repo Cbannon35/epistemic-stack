@@ -37,6 +37,9 @@ export type RoomValue = RoomSnapshot & {
   roomId: string | null;
   /** Set while this (unsent) room is a pending fork of another investigation. */
   forkFrom: string | null;
+  /** Durable row facts from room boot — owner gates merge review; forkedFrom
+   * gates the propose-merge affordance. Null before the row exists. */
+  roomMeta: { ownerId: string | null; forkedFrom: string | null };
   store: RoomStore;
   channel: RoomChannel;
   /** App-wide: who is in which room (sidebar at-a-glance avatars). */
@@ -148,6 +151,10 @@ export function RoomProvider({
     me: identity,
     roomId: liveRoomId,
     forkFrom,
+    roomMeta: {
+      ownerId: initial?.ownerId ?? null,
+      forkedFrom: initial?.forkedFrom ?? null,
+    },
     store,
     channel,
     lobby,

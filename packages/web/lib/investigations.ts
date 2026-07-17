@@ -197,10 +197,7 @@ export function hopSessionIds(hop: LineageHop): string[] {
 export type ScopeHop = { sessionIds: string[]; cutoff: number | null };
 
 /** Loosest-wins for unbounded (null); otherwise the earlier moment. */
-export function minCutoff(
-  a: number | null,
-  b: number | null
-): number | null {
+export function minCutoff(a: number | null, b: number | null): number | null {
   if (a == null) {
     return b;
   }

@@ -85,7 +85,11 @@ function Pill({
 
 export function ClaimNode({ data, selected }: NodeProps<any>) {
   return (
-    <div className="graph-node" style={{ width: 180, textAlign: "center" }}>
+    <div
+      className="graph-node"
+      data-incoming={data.incoming || undefined}
+      style={{ width: 180, textAlign: "center" }}
+    >
       <Handles />
       <ChallengeFlag challenges={data.challenges} />
       <Pill kind="claim" selected={selected} />
@@ -120,7 +124,11 @@ export function ClaimNode({ data, selected }: NodeProps<any>) {
 export function SourceNode({ data, selected }: NodeProps<any>) {
   const ghost = KIND_PILL.source.fg;
   return (
-    <div className="graph-node" style={{ width: 150, textAlign: "center" }}>
+    <div
+      className="graph-node"
+      data-incoming={data.incoming || undefined}
+      style={{ width: 150, textAlign: "center" }}
+    >
       <Handles />
       <ChallengeFlag challenges={data.challenges} />
       <div
@@ -160,7 +168,11 @@ export function SourceNode({ data, selected }: NodeProps<any>) {
 
 export function CruxNode({ data, selected }: NodeProps<any>) {
   return (
-    <div className="graph-node" style={{ width: 176, textAlign: "center" }}>
+    <div
+      className="graph-node"
+      data-incoming={data.incoming || undefined}
+      style={{ width: 176, textAlign: "center" }}
+    >
       <Handles />
       <Pill kind="crux" selected={selected} />
       <div
@@ -184,7 +196,11 @@ export function HypothesisNode({ data, selected }: NodeProps<any>) {
     | null
     | undefined;
   return (
-    <div className="graph-node" style={{ width: 200, textAlign: "center" }}>
+    <div
+      className="graph-node"
+      data-incoming={data.incoming || undefined}
+      style={{ width: 200, textAlign: "center" }}
+    >
       <Handles />
       <ChallengeFlag challenges={data.challenges} />
       <Pill kind="hypothesis" selected={selected} />
