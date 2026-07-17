@@ -82,8 +82,10 @@ export function AgentChat({ headerActions }: { headerActions?: ReactNode }) {
     forkInvestigationAction({ parentId, turnId })
       .then((res) => {
         if ("id" in res) {
+          // No refresh needed: the layout is force-dynamic, so navigating
+          // re-fetches the sidebar list (a refresh here would race the push
+          // and cancel it).
           router.push(`/i/${res.id}`);
-          router.refresh();
         } else {
           setForkError(res.error);
         }

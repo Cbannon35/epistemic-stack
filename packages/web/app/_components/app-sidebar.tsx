@@ -213,9 +213,12 @@ function ForkRowMenu({
         }
         close();
         if (pathname === `/i/${inv.id}`) {
+          // Navigation re-runs the force-dynamic layout — refreshing too
+          // would race the push and cancel it.
           router.push("/");
+        } else {
+          router.refresh();
         }
-        router.refresh();
       })
       .finally(() => setBusy(false));
   };
