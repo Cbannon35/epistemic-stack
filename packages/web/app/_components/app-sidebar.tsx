@@ -264,7 +264,14 @@ function ForkRowMenu({
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
-      <PopoverContent align="start" className="w-72 p-3" side="right">
+      <PopoverContent
+        align="start"
+        className="w-72 p-3"
+        // The dropdown returning focus to the shared trigger must not count
+        // as "outside" — it would dismiss the confirmation as it opens.
+        onFocusOutside={(e) => e.preventDefault()}
+        side="right"
+      >
         {mode === "rename" ? (
           <form className="flex items-center gap-2" onSubmit={rename}>
             <Input
