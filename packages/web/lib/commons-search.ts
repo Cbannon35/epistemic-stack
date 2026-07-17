@@ -1,6 +1,7 @@
 import "server-only";
 import { createDb } from "@epistack/db";
 import { sql } from "drizzle-orm";
+import { hopSessionIds, type LineageHop } from "@/lib/investigations";
 
 // Cross-investigation retrieval — the compounding read path. Full-text search
 // (not vectors): only claims carry embeddings, and embedding a query would pull
@@ -84,8 +85,10 @@ export async function searchCommons(input: {
   query: string;
   mode?: CommonsSearchMode;
   kinds?: CommonsHitKind[];
-  /** Investigations to skip — e.g. the asking room's fork-ancestor chain. */
-  excludeSessionIds?: string[];
+  /** Lineage hops to skip — the asking room's fork-ancestor chain. Each hop
+   * is time-bounded: an ancestor's writes AFTER the fork moment are genuinely
+   * other work and should surface as cross-investigation hits. */
+  excludeLineage?: LineageHop[];
   limit?: number;
 }): Promise<CommonsHit[]> {
   const query = input.query.trim().slice(0, 400);
@@ -94,16 +97,26 @@ export async function searchCommons(input: {
   }
   const mode = input.mode ?? "and";
   const wanted = new Set(input.kinds ?? KINDS.map((k) => k.kind));
-  const exclude = input.excludeSessionIds ?? [];
+  const exclude = input.excludeLineage ?? [];
   const limit = Math.min(input.limit ?? 12, 40);
 
   const q = tsquery(query, mode);
-  // Writes from the room's own fork lineage are already in its graph scope.
+  // Writes within the room's own fork lineage (up to each hop's cutoff) are
+  // already in its graph scope — only those are excluded here.
+  const hopSql = (hop: LineageHop) => {
+    const ids = sql.join(
+      hopSessionIds(hop).map((id) => sql`${id}`),
+      sql`, `
+    );
+    return hop.cutoff == null
+      ? sql`(c.session_id in (${ids}))`
+      : sql`(c.session_id in (${ids}) and c.created_at <= ${new Date(hop.cutoff)})`;
+  };
   const excludeSql =
     exclude.length > 0
-      ? sql`and (c.session_id is null or c.session_id not in (${sql.join(
-          exclude.map((id) => sql`${id}`),
-          sql`, `
+      ? sql`and (c.session_id is null or not (${sql.join(
+          exclude.map(hopSql),
+          sql` or `
         )}))`
       : sql``;
 

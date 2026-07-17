@@ -21,11 +21,11 @@ export async function GET(request: Request) {
   }
   const exclude = url.searchParams.get("exclude");
   const mode = url.searchParams.get("mode") === "or" ? "or" : "and";
-  const excludeSessionIds = exclude ? await getAncestorChain(exclude) : [];
+  const excludeLineage = exclude ? await getAncestorChain(exclude) : [];
   const hits = await searchCommons({
     query,
     mode,
-    excludeSessionIds,
+    excludeLineage,
     limit: 12,
   });
   return NextResponse.json({ hits });

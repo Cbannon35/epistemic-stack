@@ -115,23 +115,59 @@ export async function getInvestigation(id: string) {
   return row ?? null;
 }
 
-// Walk fork lineage root-ward: [id, parent, grandparent, …]. Iterative with a
-// visited set so a (theoretically impossible) cycle can't hang the request.
-export async function getAncestorChain(id: string): Promise<string[]> {
-  const chain: string[] = [];
+// One hop of a fork lineage: the git-ref shape of an investigation's scope.
+export type LineageHop = {
+  /** Durable investigation row id (delegate-run writes carry this). */
+  id: string;
+  /** The eve session bound to the row (agent-turn writes carry this).
+   * Null on legacy rows, where `id` IS the eve session id. */
+  eveSessionId: string | null;
+  /** Epoch-ms upper bound on this ancestor's contributions — the moment the
+   * chain forked away from it. Null = unbounded (the leaf itself, and legacy
+   * forks that predate fork cutoffs). */
+  cutoff: number | null;
+};
+
+// Walk fork lineage root-ward: [self, parent, grandparent, …]. Each ancestor
+// hop is bounded by the fork moment of its child-in-chain (transitively
+// min-composed, so a fork of a fork can't see past its grandparent's cut).
+// Iterative with a visited set so a (theoretically impossible) cycle can't
+// hang the request.
+export async function getAncestorChain(id: string): Promise<LineageHop[]> {
+  const chain: LineageHop[] = [];
   const seen = new Set<string>();
   let cursor: string | null = id;
+  let bound: number | null = null;
   while (cursor && !seen.has(cursor) && chain.length < 32) {
     seen.add(cursor);
-    chain.push(cursor);
-    const [row]: Array<{ forkedFrom: string | null }> = await db
-      .select({ forkedFrom: schema.investigations.forkedFrom })
+    const [row] = await db
+      .select({
+        forkedFrom: schema.investigations.forkedFrom,
+        eveSessionId: schema.investigations.eveSessionId,
+        forkCutoff: schema.investigations.forkCutoff,
+      })
       .from(schema.investigations)
       .where(eq(schema.investigations.id, cursor))
       .limit(1);
+    chain.push({
+      id: cursor,
+      eveSessionId: row?.eveSessionId ?? null,
+      cutoff: bound,
+    });
+    const forkedAt = row?.forkCutoff ? row.forkCutoff.getTime() : null;
+    if (forkedAt != null) {
+      bound = bound == null ? forkedAt : Math.min(bound, forkedAt);
+    }
     cursor = row?.forkedFrom ?? null;
   }
   return chain;
+}
+
+/** Every session id a lineage hop's contributions may be keyed under. */
+export function hopSessionIds(hop: LineageHop): string[] {
+  return hop.eveSessionId && hop.eveSessionId !== hop.id
+    ? [hop.id, hop.eveSessionId]
+    : [hop.id];
 }
 
 export type TurnAuthor = {

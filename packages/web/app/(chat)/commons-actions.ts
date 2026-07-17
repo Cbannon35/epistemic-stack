@@ -24,14 +24,14 @@ export async function getCommonsSendContext(input: {
   if (!user || !input.query.trim()) {
     return null;
   }
-  const excludeSessionIds = input.excludeSessionId
+  const excludeLineage = input.excludeSessionId
     ? await getAncestorChain(input.excludeSessionId)
     : [];
   const hits = await searchCommons({
     query: input.query,
     mode: "or",
     kinds: ["claim", "hypothesis"],
-    excludeSessionIds,
+    excludeLineage,
     limit: 8,
   });
   return formatCommonsDigest(hits);

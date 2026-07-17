@@ -1,8 +1,8 @@
 "use server";
 
 import { createDb, schema } from "@epistack/db";
-import { and, count, eq, gt, inArray, or, type SQL } from "drizzle-orm";
-import { getAncestorChain } from "@/lib/investigations";
+import { and, count, eq, gt, inArray, lte, or, type SQL } from "drizzle-orm";
+import { getAncestorChain, hopSessionIds } from "@/lib/investigations";
 import { createClient } from "@/lib/supabase/server";
 
 // The catch-up digest: what happened in this room while the viewer was away.
@@ -48,10 +48,19 @@ export async function getRoomDigest(input: {
     return null;
   }
   // Fresh condition per query — drizzle builders shouldn't share instances.
+  // Per-hop: growth since the visit, capped at the hop's fork cutoff (ancestor
+  // work past the branch point isn't this room's growth).
   const grewSince = (): SQL | undefined =>
-    and(
-      inArray(schema.contributions.sessionId, lineage),
-      gt(schema.contributions.createdAt, since)
+    or(
+      ...lineage.map((hop) =>
+        and(
+          inArray(schema.contributions.sessionId, hopSessionIds(hop)),
+          gt(schema.contributions.createdAt, since),
+          hop.cutoff == null
+            ? undefined
+            : lte(schema.contributions.createdAt, new Date(hop.cutoff))
+        )
+      )
     );
 
   const [

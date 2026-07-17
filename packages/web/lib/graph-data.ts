@@ -7,7 +7,7 @@ import {
   listCredences,
   summarizeCredences,
 } from "@/lib/credences";
-import { getAncestorChain } from "@/lib/investigations";
+import { getAncestorChain, hopSessionIds } from "@/lib/investigations";
 
 // Read the commons as a graph (nodes + edges + per-node detail). With an
 // investigation id, scope to what that investigation — and its fork ancestors —
@@ -86,10 +86,19 @@ export type GraphPayload = {
 export async function buildGraphData(
   investigation: string | null
 ): Promise<GraphPayload> {
-  // A fork inherits its ancestors' graph: scope = the whole lineage chain.
-  const scope = investigation
-    ? new Set(await getAncestorChain(investigation))
-    : null;
+  // A fork inherits its ancestors' graph up to each hop's fork moment
+  // (git-style refs): scope maps every session id a hop's writes may carry —
+  // the row id AND its eve session id — to that hop's time bound (null =
+  // unbounded, i.e. the leaf itself).
+  const chain = investigation ? await getAncestorChain(investigation) : null;
+  const scope = chain ? new Map<string, number | null>() : null;
+  if (chain && scope) {
+    for (const hop of chain) {
+      for (const id of hopSessionIds(hop)) {
+        scope.set(id, hop.cutoff);
+      }
+    }
+  }
 
   const [
     claims,
@@ -137,21 +146,43 @@ export async function buildGraphData(
   const timeOf = new Map(
     contributions.map((c) => [c.id, c.createdAt.getTime()])
   );
+  // In a scoped view a write counts iff its session is in the lineage AND it
+  // predates that hop's fork cutoff — ancestor work AFTER the branch point
+  // belongs to the ancestor's own future, not this fork's.
+  const withinCutoff = (sessionId: string, contributionId: string) => {
+    const cutoff = scope?.get(sessionId);
+    if (cutoff == null) {
+      return true;
+    }
+    const t = timeOf.get(contributionId);
+    return t != null && t <= cutoff;
+  };
   const inScope = (contributionId: string) => {
     if (!scope) {
       return true;
     }
     const sessionId = sessionOf.get(contributionId);
-    return sessionId != null && scope.has(sessionId);
+    if (sessionId == null || !scope.has(sessionId)) {
+      return false;
+    }
+    return withinCutoff(sessionId, contributionId);
   };
 
   const scopedMentions = mentions.filter((m) => inScope(m.contributionId));
   const scopedRelations = relations.filter((r) => inScope(r.contributionId));
   const scopedCruxes = cruxes.filter((x) => inScope(x.contributionId));
   const scopedHypLinks = hypLinks.filter((l) => inScope(l.contributionId));
-  const scopedHypotheses = hypotheses.filter(
-    (h) => !scope || (h.sessionId != null && scope.has(h.sessionId))
-  );
+  // Hypotheses carry their session directly (their contribution rides along
+  // for the timestamp).
+  const scopedHypotheses = hypotheses.filter((h) => {
+    if (!scope) {
+      return true;
+    }
+    if (h.sessionId == null || !scope.has(h.sessionId)) {
+      return false;
+    }
+    return withinCutoff(h.sessionId, h.contributionId);
+  });
 
   const claimIds = new Set<string>();
   const sourceIds = new Set<string>();
