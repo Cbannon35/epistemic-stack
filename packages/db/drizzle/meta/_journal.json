@@ -78,6 +78,13 @@
       "when": 1784246785561,
       "tag": "0010_dear_maddog",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1784275161142,
+      "tag": "0011_wandering_red_hulk",
+      "breakpoints": true
     }
   ]
 }

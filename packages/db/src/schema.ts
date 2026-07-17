@@ -453,3 +453,95 @@ export const topics = pgTable(
   },
   (t) => [uniqueIndex('topics_slug_idx').on(t.slug)],
 )
+
+// ── merge requests ───────────────────────────────────────────────────────────
+// A fork proposing itself back into an ancestor's visible scope. Merging is
+// SCOPE ADOPTION, not content copying: the fork's contributions already live
+// in the commons; acceptance widens the target lineage's read scope. The row
+// is app-side operational state (like delegations); the commons receipt is
+// the `merge@1` contribution written at accept time.
+export const mergeRequests = pgTable(
+  'merge_requests',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    // No FKs on source/target: an ACCEPTED merge must survive the source
+    // fork's later deletion (its commons writes survive; merged_hops below
+    // keeps them resolvable). deleteFork() tidies open rows explicitly.
+    sourceId: text('source_id').notNull(),
+    targetId: text('target_id').notNull(),
+    proposerId: uuid('proposer_id')
+      .notNull()
+      .references(() => contributors.id),
+    note: text('note'),
+    status: text('status').notNull().default('open'), // 'open' | 'accepted' | 'declined' | 'withdrawn'
+    reviewerId: uuid('reviewer_id').references(() => contributors.id),
+    decidedAt: timestamp('decided_at', { withTimezone: true }),
+    decisionNote: text('decision_note'),
+    // Materialized at accept: [{sessionIds: string[], cutoff: number|null}] —
+    // the source hops absent from the target's chain, cutoffs min-composed
+    // with the accept moment. Frozen so what the reviewer approved is what
+    // the target gets, forever (mirrors fork_cutoff, not recomputed reads).
+    mergedHops: jsonb('merged_hops'),
+    contributionId: uuid('contribution_id').references(() => contributions.id),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index('merge_requests_target_idx').on(t.targetId),
+    index('merge_requests_source_idx').on(t.sourceId),
+  ],
+)
+
+// ── releases ─────────────────────────────────────────────────────────────────
+// A named, citable checkpoint: investigation + materialized scope hops + an
+// as-of moment. Nothing is copied — immutability falls out of time-capping an
+// append-only ledger (same hops + same cutoff always resolve to the same
+// graph). Public page /releases/<id>; survives room deletion via the
+// materialized recipe (title_snapshot + hops).
+export const releases = pgTable(
+  'releases',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    investigationId: text('investigation_id').notNull(), // no FK — see merge_requests
+    titleSnapshot: text('title_snapshot').notNull(), // rooms rename; citations must not drift
+    version: integer('version').notNull(), // per-investigation, max+1 at cut
+    name: text('name'),
+    notes: text('notes'),
+    cutoff: timestamp('cutoff', { withTimezone: true }).notNull(),
+    hops: jsonb('hops').notNull(), // ScopeHop[] at cut time (accepted merges included)
+    createdBy: uuid('created_by')
+      .notNull()
+      .references(() => contributors.id),
+    contributionId: uuid('contribution_id')
+      .notNull()
+      .references(() => contributions.id),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('releases_inv_version_idx').on(t.investigationId, t.version),
+    index('releases_inv_idx').on(t.investigationId),
+  ],
+)
+
+// ── agent keys ───────────────────────────────────────────────────────────────
+// Bearer capability for the write-capable agent MCP endpoint. The token is
+// never stored — only its sha256. Minted by a signed-in human for an agent
+// contributor; revocation is a timestamp (the key row itself is the record,
+// append-only in spirit).
+export const agentKeys = pgTable(
+  'agent_keys',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tokenHash: text('token_hash').notNull(),
+    contributorId: uuid('contributor_id')
+      .notNull()
+      .references(() => contributors.id),
+    createdBy: uuid('created_by')
+      .notNull()
+      .references(() => contributors.id),
+    lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
+    revokedAt: timestamp('revoked_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex('agent_keys_token_idx').on(t.tokenHash)],
+)
