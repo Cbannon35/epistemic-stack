@@ -1,0 +1,485 @@
+import "server-only";
+import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { Client } from "eve/client";
+import { z } from "zod";
+import type { AgentPrincipal } from "@/lib/agent-keys";
+import { getComment, insertComment } from "@/lib/comments";
+import { formatCommonsDigest, searchCommons } from "@/lib/commons-search";
+import { startDelegation, stepDelegation } from "@/lib/delegate/run";
+import type { DelegationAdvance } from "@/lib/delegate/types";
+import {
+  claimEveSession,
+  getAncestorChain,
+  getInvestigation,
+  insertTurnAuthor,
+} from "@/lib/investigations";
+import { buildJournal } from "@/lib/journal";
+import { broadcastRoomEvent } from "@/lib/realtime/server-broadcast";
+import type {
+  AgentActivityEvent,
+  CommentsChangedEvent,
+  DelegationEndEvent,
+  DelegationStartEvent,
+  DelegationStepEvent,
+} from "@/lib/realtime/types";
+
+// Collaboration parity for external agents: the tools that make an MCP agent
+// a room MEMBER rather than a graph feed — reading the transcript, chatting
+// through real eve turns, commenting, and delegating eve sub-investigations.
+// Same trust model as the write tools: everything runs under the agent's own
+// contributor identity; rooms hear about it via server-side broadcasts.
+
+const TURN_ACCEPT_TIMEOUT_MS = 15_000;
+const REPLY_WAIT_BUDGET_MS = 45_000;
+const REPLY_CLIP = 4000;
+
+export type AgentCollabScope = { origin: string; agent: AgentPrincipal };
+
+function asText(payload: unknown) {
+  return {
+    content: [
+      { type: "text" as const, text: JSON.stringify(payload, null, 2) },
+    ],
+  };
+}
+
+function announce(
+  scope: AgentCollabScope,
+  investigationId: string,
+  action: string
+): void {
+  const payload: AgentActivityEvent = {
+    contributorId: scope.agent.contributorId,
+    name: scope.agent.name,
+    action,
+    nodeId: null,
+    investigationId,
+    ts: Date.now(),
+  };
+  broadcastRoomEvent(investigationId, "agent-activity", payload).catch(
+    () => undefined
+  );
+}
+
+// ── transcript ───────────────────────────────────────────────────────────────
+
+function registerTranscript(server: McpServer, scope: AgentCollabScope): void {
+  server.registerTool(
+    "get_transcript",
+    {
+      title: "Read a room's chat transcript",
+      description:
+        "The investigation's chat so far: each turn's question, eve's answer, and the message ids (`<turnId>:user` / `<turnId>:assistant`) that comment anchors use.",
+      inputSchema: { investigation_id: z.string().min(1) },
+    },
+    async ({ investigation_id }) => {
+      const journal = await buildJournal(investigation_id);
+      if (!journal) {
+        return asText({ error: `unknown investigation ${investigation_id}` });
+      }
+      return asText({
+        title: journal.title,
+        turns: journal.turns.map((t) => ({
+          turnId: t.turnId,
+          at: t.at,
+          question: t.question,
+          questionMessageId: `${t.turnId}:user`,
+          answer: t.answer,
+          answerMessageId: `${t.turnId}:assistant`,
+          actions: t.actions.map((a) => a.summary),
+        })),
+        note: "The transcript snapshot lags live turns by a save cycle; the graph is always current.",
+      });
+    }
+  );
+}
+
+// ── comments ─────────────────────────────────────────────────────────────────
+
+function commentsChanged(
+  scope: AgentCollabScope,
+  sessionId: string,
+  action: "commented" | "replied",
+  quote?: string | null
+): void {
+  const payload: CommentsChangedEvent = {
+    sessionId,
+    actorId: scope.agent.contributorId,
+    actorName: scope.agent.name,
+    action,
+    quote: quote ?? undefined,
+  };
+  broadcastRoomEvent(sessionId, "comments:changed", payload).catch(
+    () => undefined
+  );
+}
+
+function registerComments(server: McpServer, scope: AgentCollabScope): void {
+  server.registerTool(
+    "add_comment",
+    {
+      title: "Comment on a chat message",
+      description:
+        "Start a public comment thread in a room. Anchor it to a message by quoting a verbatim passage from that message (see get_transcript for message ids); prefix/suffix disambiguate repeated text.",
+      inputSchema: {
+        investigation_id: z.string().min(1),
+        body: z.string().min(1).max(2000),
+        message_id: z
+          .string()
+          .min(1)
+          .describe("`<turnId>:user` or `<turnId>:assistant`"),
+        quote: z
+          .string()
+          .min(1)
+          .describe("verbatim passage from that message to highlight"),
+        quote_prefix: z.string().optional(),
+        quote_suffix: z.string().optional(),
+      },
+    },
+    async ({
+      investigation_id,
+      body,
+      message_id,
+      quote,
+      quote_prefix,
+      quote_suffix,
+    }) => {
+      const inv = await getInvestigation(investigation_id);
+      if (!inv) {
+        return asText({ error: `unknown investigation ${investigation_id}` });
+      }
+      const id = await insertComment({
+        sessionId: investigation_id,
+        authorId: scope.agent.contributorId,
+        body,
+        visibility: "public",
+        anchor: {
+          messageId: message_id,
+          quote,
+          quotePrefix: quote_prefix ?? "",
+          quoteSuffix: quote_suffix ?? "",
+        },
+      });
+      commentsChanged(scope, investigation_id, "commented", quote);
+      announce(scope, investigation_id, "commented on the chat");
+      return asText({ comment_id: id });
+    }
+  );
+  server.registerTool(
+    "reply_to_comment",
+    {
+      title: "Reply in a comment thread",
+      description:
+        "Append a reply to an existing comment thread (pass the root or any reply's id; threads are one level deep).",
+      inputSchema: {
+        comment_id: z.string().min(1),
+        body: z.string().min(1).max(2000),
+      },
+    },
+    async ({ comment_id, body }) => {
+      const target = await getComment(comment_id);
+      if (!target || target.visibility !== "public") {
+        return asText({ error: "unknown comment" });
+      }
+      const rootId = target.parentId ?? target.id;
+      const id = await insertComment({
+        sessionId: target.sessionId,
+        authorId: scope.agent.contributorId,
+        body,
+        visibility: "public",
+        parentId: rootId,
+      });
+      commentsChanged(scope, target.sessionId, "replied");
+      announce(scope, target.sessionId, "replied in a comment thread");
+      return asText({ comment_id: id });
+    }
+  );
+}
+
+// ── chat (real eve turns) ────────────────────────────────────────────────────
+
+type PersistedState = {
+  sessionId?: string;
+  continuationToken?: string;
+} | null;
+
+type StreamEvent = {
+  type: string;
+  data?: { turnId?: string; message?: string | null; finishReason?: string };
+};
+
+/** Consume the send's own event stream just long enough to learn the accepted
+ * turn id (and, when asked, eve's final answer). Abandoning the stream does
+ * not cancel the turn — runs are durable server-side; every room member
+ * converges via the shared durable stream, exactly as with browser sends. */
+async function watchTurn(
+  events: AsyncIterable<unknown>,
+  waitForReply: boolean
+): Promise<{ turnId: string | null; reply: string | null }> {
+  let turnId: string | null = null;
+  let reply: string | null = null;
+  const deadline =
+    Date.now() + (waitForReply ? REPLY_WAIT_BUDGET_MS : TURN_ACCEPT_TIMEOUT_MS);
+  for await (const raw of events) {
+    const event = raw as StreamEvent;
+    if (event.data?.turnId) {
+      turnId = turnId ?? event.data.turnId;
+    }
+    if (
+      waitForReply &&
+      event.type === "message.completed" &&
+      event.data?.message &&
+      event.data.finishReason !== "tool-calls"
+    ) {
+      reply = event.data.message;
+    }
+    const done =
+      event.type === "turn.completed" ||
+      event.type === "turn.failed" ||
+      event.type === "session.waiting";
+    if ((!waitForReply && turnId) || (waitForReply && done && turnId)) {
+      break;
+    }
+    if (Date.now() > deadline) {
+      break;
+    }
+  }
+  return { turnId, reply };
+}
+
+function registerSendMessage(server: McpServer, scope: AgentCollabScope): void {
+  server.registerTool(
+    "send_message",
+    {
+      title: "Send a chat message to a room",
+      description:
+        "Take a real turn in the investigation's chat, as this agent: the message lands in every member's transcript under your name, and eve answers it. First message in an agent-created room starts its eve session. Sends race if a turn is mid-flight — retry on failure. Set wait_for_reply to collect eve's answer (slower).",
+      inputSchema: {
+        investigation_id: z.string().min(1),
+        message: z.string().min(1).max(4000),
+        wait_for_reply: z.boolean().optional(),
+      },
+    },
+    async ({ investigation_id, message, wait_for_reply }) => {
+      const inv = await getInvestigation(investigation_id);
+      if (!inv) {
+        return asText({ error: `unknown investigation ${investigation_id}` });
+      }
+      const persisted = inv.sessionState as PersistedState;
+      const token = persisted?.continuationToken;
+      const eveSessionId = persisted?.sessionId ?? inv.eveSessionId;
+      if (eveSessionId && !token) {
+        return asText({
+          error: "this investigation can't accept new messages",
+        });
+      }
+
+      // Same clientContext assembly the browser composer does, minus the
+      // human-only pieces (queued comment context rides human sends).
+      const clientContext: Record<string, string> = {
+        author: scope.agent.name,
+      };
+      if (inv.seedFromCommons) {
+        const lineage = await getAncestorChain(investigation_id);
+        const digest = formatCommonsDigest(
+          await searchCommons({
+            query: message,
+            mode: "or",
+            kinds: ["claim", "hypothesis"],
+            excludeLineage: lineage,
+            limit: 8,
+          })
+        );
+        if (digest) {
+          clientContext.commonsContext = digest;
+        }
+      } else {
+        clientContext.commonsPolicy =
+          "fresh-start: this investigation starts blank by choice. Do NOT call query_commons to seed from prior investigations — research the question fresh. Recording sources/claims to the commons is unchanged.";
+      }
+
+      broadcastRoomEvent(investigation_id, "turn:pending", {
+        displayName: scope.agent.name,
+      }).catch(() => undefined);
+
+      const client = new Client({ host: scope.origin });
+      const isFirst = !eveSessionId;
+      const session = client.session(
+        isFirst
+          ? { streamIndex: 0 }
+          : {
+              sessionId: eveSessionId as string,
+              continuationToken: token as string,
+              streamIndex: 0,
+            }
+      );
+      const res = await session.send({ message, clientContext });
+
+      if (isFirst) {
+        const claimed = await claimEveSession({
+          id: investigation_id,
+          eveSessionId: res.sessionId,
+          sessionState: {
+            sessionId: res.sessionId,
+            continuationToken: res.continuationToken,
+            streamIndex: 0,
+          },
+          events: inv.events ?? [],
+        });
+        if (!claimed) {
+          return asText({
+            error:
+              "another member initialized this room's session concurrently — retry the send",
+          });
+        }
+      }
+
+      const { turnId, reply } = await watchTurn(res, wait_for_reply ?? false);
+      if (turnId) {
+        await insertTurnAuthor({
+          sessionId: investigation_id,
+          turnId,
+          contributorId: scope.agent.contributorId,
+        });
+        broadcastRoomEvent(investigation_id, "turn:author", {
+          turnId,
+          contributorId: scope.agent.contributorId,
+          displayName: scope.agent.name,
+        }).catch(() => undefined);
+      }
+      announce(
+        scope,
+        investigation_id,
+        `asked in chat: “${message.slice(0, 80)}”`
+      );
+      return asText({
+        ok: true,
+        turn_id: turnId,
+        eve_reply: reply ? reply.slice(0, REPLY_CLIP) : null,
+        note: reply
+          ? undefined
+          : "The turn is running; members see it stream live. Use get_transcript later for the answer.",
+      });
+    }
+  );
+}
+
+// ── delegated investigations ────────────────────────────────────────────────
+
+function agentHostId(scope: AgentCollabScope): string {
+  return `agent:${scope.agent.contributorId}`;
+}
+
+/** Play an advance's beats into the room the way a delegator's browser does —
+ * start/step/end broadcasts drive the fuchsia eve cursor for every member. */
+async function broadcastAdvance(
+  scope: AgentCollabScope,
+  investigationId: string,
+  advance: DelegationAdvance,
+  opts: { started?: string }
+): Promise<void> {
+  const hostId = agentHostId(scope);
+  const ts = Date.now();
+  if (opts.started) {
+    const start: DelegationStartEvent = {
+      delegationId: advance.delegationId,
+      hostId,
+      hostName: `${scope.agent.name} → eve`,
+      brief: opts.started,
+      ts,
+    };
+    await broadcastRoomEvent(investigationId, "delegation-start", start);
+  }
+  for (const [i, beat] of advance.beats.entries()) {
+    const step: DelegationStepEvent = {
+      delegationId: advance.delegationId,
+      hostId,
+      kind: beat.kind,
+      index: i,
+      total: advance.beats.length,
+      nodeId: beat.nodeId,
+      narration: beat.narration,
+      x: 0,
+      y: 0,
+      ts: Date.now(),
+    };
+    await broadcastRoomEvent(investigationId, "delegation-step", step);
+  }
+  if (advance.done) {
+    const end: DelegationEndEvent = {
+      delegationId: advance.delegationId,
+      hostId,
+      reason: "complete",
+      summary: advance.summary,
+      ts: Date.now(),
+    };
+    await broadcastRoomEvent(investigationId, "delegation-end", end);
+  }
+}
+
+function registerDelegation(server: McpServer, scope: AgentCollabScope): void {
+  server.registerTool(
+    "delegate_investigation",
+    {
+      title: "Delegate a background eve investigation",
+      description:
+        "Assign eve a bounded background sub-investigation in a room (the cursor-chat “@eve investigate” flow). Returns the plan's first narration beats; keep calling delegate_step until done — each call advances one phase.",
+      inputSchema: {
+        investigation_id: z.string().min(1),
+        brief: z.string().min(3).max(500),
+      },
+    },
+    async ({ investigation_id, brief }) => {
+      const advance = await startDelegation({
+        sessionId: investigation_id,
+        delegatorId: scope.agent.contributorId,
+        brief,
+      });
+      await broadcastAdvance(scope, investigation_id, advance, {
+        started: brief,
+      });
+      announce(scope, investigation_id, `delegated to eve: “${brief}”`);
+      return asText({
+        delegation_id: advance.delegationId,
+        beats: advance.beats,
+        done: advance.done,
+        summary: advance.summary ?? null,
+      });
+    }
+  );
+  server.registerTool(
+    "delegate_step",
+    {
+      title: "Advance a delegated investigation",
+      description:
+        "Run the next phase of a delegation you started (research → synthesize). At most one model call per step; stop when done=true.",
+      inputSchema: {
+        investigation_id: z.string().min(1),
+        delegation_id: z.string().min(1),
+      },
+    },
+    async ({ investigation_id, delegation_id }) => {
+      const advance = await stepDelegation({
+        delegationId: delegation_id,
+        delegatorId: scope.agent.contributorId,
+      });
+      await broadcastAdvance(scope, investigation_id, advance, {});
+      return asText({
+        delegation_id: advance.delegationId,
+        beats: advance.beats,
+        done: advance.done,
+        summary: advance.summary ?? null,
+      });
+    }
+  );
+}
+
+export function registerAgentCollabTools(
+  server: McpServer,
+  scope: AgentCollabScope
+): void {
+  registerTranscript(server, scope);
+  registerComments(server, scope);
+  registerSendMessage(server, scope);
+  registerDelegation(server, scope);
+}

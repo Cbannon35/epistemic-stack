@@ -1,6 +1,7 @@
 import { createMcpHandler } from "mcp-handler";
 import { NextResponse } from "next/server";
 import { resolveAgentToken } from "@/lib/agent-keys";
+import { registerAgentCollabTools } from "@/lib/mcp/register-agent-collab-tools";
 import { registerAgentTools } from "@/lib/mcp/register-agent-tools";
 import { registerCommonsTools } from "@/lib/mcp/register-tools";
 
@@ -29,6 +30,7 @@ const handler = async (req: Request) => {
     (server) => {
       registerCommonsTools(server, { origin, topic: null, memberIds: null });
       registerAgentTools(server, { origin, agent });
+      registerAgentCollabTools(server, { origin, agent });
     },
     {},
     { basePath: "/api/mcp/agent", maxDuration: 60 }
