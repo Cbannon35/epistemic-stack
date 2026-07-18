@@ -21,9 +21,13 @@ type GraphBusEvents = {
   /** Escape the first-glance detail budget — tours/delegations walk nodes
    * the model chose from the FULL catalog, which may be tier-hidden. */
   revealNode: { nodeId: string };
-  /** Own committed cursor-chat while parked (broadcasts skip self) — the
-   * parking lot shows your bubble rising from your parked glyph. */
-  selfCursorChat: { text: string };
+  /** Own cursor-chat while parked (broadcasts skip self). Drafts move your
+   * parked glyph to the speaking slot WITHOUT a bubble — the floating input
+   * is your bubble while typing; the committed message replaces it. */
+  selfCursorChat: { text: string; draft?: boolean };
+  /** Open the `/` cursor-chat input (e.g. `/` in an EMPTY chat composer —
+   * the composer normally holds focus and would swallow the key). */
+  openCursorChat: Record<string, never>;
 };
 
 type AnyHandler = (payload: never) => void;

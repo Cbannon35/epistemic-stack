@@ -29,8 +29,9 @@ const MESSAGE_TTL_MS = 12_000;
 const SWEEP_MS = 1000;
 
 // Keyed by PERSON (userId): the lot shows one glyph per person, so a message
-// from any of their connections speaks through that one glyph.
-type Speech = { userId: string; text: string; ts: number };
+// from any of their connections speaks through that one glyph. Own drafts
+// take the speaking slot but render no bubble (the input shows the text).
+type Speech = { userId: string; text: string; ts: number; draft?: boolean };
 
 export function ParkingLot() {
   const { channel, me } = useRoom();
@@ -60,10 +61,10 @@ export function ParkingLot() {
   // The feed: oldest→newest committed/live messages, one entry per person.
   const [speech, setSpeech] = useState<readonly Speech[]>([]);
 
-  const speak = (userId: string, text: string) => {
+  const speak = (userId: string, text: string, draft?: boolean) => {
     setSpeech((prev) => [
       ...prev.filter((s) => s.userId !== userId),
-      { userId, text, ts: Date.now() },
+      { userId, text, ts: Date.now(), draft },
     ]);
   };
 
@@ -83,9 +84,18 @@ export function ParkingLot() {
       }),
     [on, peers]
   );
-  // Own messages arrive via the local bus — broadcasts skip self.
+  // Own messages arrive via the local bus — broadcasts skip self. Live
+  // keystrokes speak too (glyph springs over as you type); an empty clear
+  // (Escape/blur with no commit) sends the glyph back to the row.
   useEffect(
-    () => graphBus.on("selfCursorChat", ({ text }) => speak(me.userId, text)),
+    () =>
+      graphBus.on("selfCursorChat", ({ text, draft }) => {
+        if (text === "") {
+          setSpeech((prev) => prev.filter((s) => s.userId !== me.userId));
+        } else {
+          speak(me.userId, text, draft);
+        }
+      }),
     [me.userId]
   );
   useEffect(() => {
@@ -137,7 +147,7 @@ export function ParkingLot() {
             } · in the chat`}
           >
             <CursorGlyph color={peer.color} />
-            {speaking && message ? (
+            {speaking && message && !message.draft ? (
               <div
                 className="fade-in max-w-56 truncate whitespace-pre rounded-lg rounded-bl-sm border bg-background/95 px-2 py-1 text-foreground text-xs shadow-[var(--shadow-float)] backdrop-blur"
                 style={{ borderColor: peer.color }}

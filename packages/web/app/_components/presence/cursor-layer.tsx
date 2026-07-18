@@ -255,10 +255,12 @@ export function CursorLayer() {
           );
         }
       }
-      // Own chat input rides the raw pointer; with the pointer off the pane
-      // (chat from anywhere via `/`) it anchors at the own parked slot.
+      // Own chat input rides the raw pointer; with the pointer OFF the pane
+      // (chat from anywhere via `/`) it anchors beside the parking lot.
+      // Gate on pointerOver, not position — a stale position from an earlier
+      // graph visit must not anchor the input in the wrong place.
       const wrap = chatWrapRef.current;
-      const own = ownPosRef.current;
+      const own = pointerOverRef.current ? ownPosRef.current : null;
       if (wrap) {
         if (own) {
           wrap.style.transform = `translate3d(${own.x}px, ${own.y}px, 0)`;
@@ -361,6 +363,9 @@ export function CursorLayer() {
           done: true,
           ts: Date.now(),
         });
+        // Mirror the clear locally: an abandoned draft sends the glyph back
+        // to the idle row (a committed message keeps its bubble ticking).
+        graphBus.emit("selfCursorChat", { text: "" });
       }
     },
     [send, setActivity, me.clientId]
@@ -379,6 +384,13 @@ export function CursorLayer() {
   const handleChatChange = (value: string) => {
     setChatText(value);
     sendChatRef.current(value);
+    // Broadcasts skip self — while parked, echo live typing to the lot so
+    // YOUR glyph springs to the speaking slot as you type. Marked draft: the
+    // input shows your text while typing, so the glyph stays bubble-less
+    // until commit (no double rendering).
+    if (parkedIdsRef.current.has(me.clientId)) {
+      graphBus.emit("selfCursorChat", { text: value, draft: true });
+    }
     bumpIdleTimer();
   };
 
@@ -498,6 +510,17 @@ export function CursorLayer() {
       bumpIdleTimer();
     }
   }, [chatOpen, bumpIdleTimer]);
+
+  // The chat composer forwards `/` (when empty) here — its textarea holds
+  // focus in the chat pane, so the window keybinding can't see the key.
+  useEffect(
+    () =>
+      graphBus.on("openCursorChat", () => {
+        setChatOpen(true);
+        setActivity("chatting");
+      }),
+    [setActivity]
+  );
 
   const peers = [...channel.peers.values()].filter(
     (p) => p.clientId !== me.clientId

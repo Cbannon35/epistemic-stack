@@ -16,6 +16,7 @@ import {
   useCommentsProvider,
 } from "@/app/_components/comments/use-comments";
 import { RelatedPriorWork } from "@/app/_components/commons/related-work";
+import { graphBus } from "@/app/_components/graph/graph-bus";
 import { EmptyRoomState } from "@/app/_components/onboarding/room-hints";
 import { PresenceAvatars } from "@/app/_components/presence/presence-avatars";
 import { useRoom } from "@/app/_components/room-provider";
@@ -191,8 +192,22 @@ export function AgentChat({ headerActions }: { headerActions?: ReactNode }) {
           </p>
         ) : null}
 
+        {/* `/` in an EMPTY composer opens cursor chat (the lot speaks for
+            you) — the composer holds focus in this pane, so without this the
+            room-wide `/` binding could never fire here. Any other content
+            keeps `/` as a normal character. */}
         <div
           className="relative mx-auto w-full max-w-3xl p-4 pt-0"
+          onKeyDown={(e) => {
+            if (
+              e.key === "/" &&
+              (e.target as HTMLTextAreaElement).value === "" &&
+              !(e.metaKey || e.ctrlKey || e.altKey)
+            ) {
+              e.preventDefault();
+              graphBus.emit("openCursorChat", {});
+            }
+          }}
           ref={composerRef}
         >
           <NodeMentionPicker containerRef={composerRef} roomId={room.roomId} />
