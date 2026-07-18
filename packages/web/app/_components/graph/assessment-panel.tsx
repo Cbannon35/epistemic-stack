@@ -10,7 +10,7 @@ export function AssessmentPanel({
   assessment: Assessment;
   onClose: () => void;
 }) {
-  const hyps = [...assessment.hypotheses].sort(
+  const hyps = assessment.hypotheses.toSorted(
     (a, b) => b.support - b.undermine - (a.support - a.undermine)
   );
   const max = Math.max(

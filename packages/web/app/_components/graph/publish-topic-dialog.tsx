@@ -1,7 +1,7 @@
 "use client";
 
 import { CheckIcon, CopyIcon, ExternalLinkIcon } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import {
   previewTopicAction,
   publishTopicAction,
@@ -93,11 +93,21 @@ function PreviewLine({
   );
 }
 
+// window.location.origin is immutable for the life of the page, so the store
+// never emits; the empty server snapshot keeps SSR output stable while the
+// client reads the real origin in its first render — no post-mount flash.
+const subscribeToNothing = () => () => {
+  // origin never changes, so there is nothing to unsubscribe
+};
+const getOrigin = () => window.location.origin;
+const getServerOrigin = () => "";
+
 function PublishedPane({ slug }: { slug: string }) {
-  const [origin, setOrigin] = useState("");
-  useEffect(() => {
-    setOrigin(window.location.origin);
-  }, []);
+  const origin = useSyncExternalStore(
+    subscribeToNothing,
+    getOrigin,
+    getServerOrigin
+  );
   const pageUrl = `${origin}/topics/${slug}`;
   const mcpUrl = `${origin}/api/mcp/${slug}/mcp`;
   return (

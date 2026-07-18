@@ -72,12 +72,27 @@ export function RoomTicker() {
     new Map<string, ReturnType<typeof setTimeout>>()
   );
   const mineRef = useRef(false);
-  mineRef.current = room.activeTurn?.mine ?? false;
+  const mine = room.activeTurn?.mine ?? false;
+  useEffect(() => {
+    mineRef.current = mine;
+  }, [mine]);
 
   const push = useCallback((text: string, color?: string) => {
     idRef.current += 1;
     const item = { id: idRef.current, text, color, at: Date.now() };
     setItems((prev) => [...prev.slice(-(MAX_ITEMS - 1)), item]);
+  }, []);
+
+  // Leave-grace timers deliberately outlive individual effect runs (a refresh
+  // must not read as a departure) — so they're only reclaimed on unmount.
+  useEffect(() => {
+    const timers = leaveTimersRef.current;
+    return () => {
+      for (const t of timers.values()) {
+        clearTimeout(t);
+      }
+      timers.clear();
+    };
   }, []);
 
   // Expiry sweep (paused while hovered so items stay readable).

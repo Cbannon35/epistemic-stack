@@ -1,7 +1,7 @@
 "use client";
 
 import { CheckIcon, CopyIcon } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 
 // The topic page's "add this to your assistant" card. The connector URL needs
 // the deployed origin, which only the browser reliably knows (the pages are
@@ -38,12 +38,22 @@ function CopyButton({ text, label }: { text: string; label: string }) {
   );
 }
 
+// window.location.origin is immutable for the life of the page, so the store
+// never emits; the empty server snapshot keeps the statically-rendered HTML
+// stable while the client reads the real origin in its first render.
+const subscribeToNothing = () => () => {
+  // origin never changes, so there is nothing to unsubscribe
+};
+const getOrigin = () => window.location.origin;
+const getServerOrigin = () => "";
+
 export function ConnectCard({ slug }: { slug: string }) {
-  const [origin, setOrigin] = useState<string | null>(null);
-  useEffect(() => {
-    setOrigin(window.location.origin);
-  }, []);
-  const url = `${origin ?? ""}/api/mcp/${slug}/mcp`;
+  const origin = useSyncExternalStore(
+    subscribeToNothing,
+    getOrigin,
+    getServerOrigin
+  );
+  const url = `${origin}/api/mcp/${slug}/mcp`;
   const config = JSON.stringify(
     { mcpServers: { [`epistack-${slug}`]: { url } } },
     null,

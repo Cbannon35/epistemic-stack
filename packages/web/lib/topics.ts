@@ -172,7 +172,7 @@ function traverse(
   adjacency: Map<string, string[]>
 ): Set<string> {
   const members = new Set(seeds);
-  let frontier = [...seeds].sort((a, b) => a.localeCompare(b));
+  let frontier = Array.from(seeds).sort((a, b) => a.localeCompare(b));
   for (let depth = 0; depth < TRAVERSAL_DEPTH; depth++) {
     const next: string[] = [];
     for (const id of frontier) {

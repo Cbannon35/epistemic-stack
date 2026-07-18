@@ -6,6 +6,7 @@ import {
   type ReactNode,
   useContext,
   useEffect,
+  useMemo,
   useState,
   useSyncExternalStore,
 } from "react";
@@ -96,11 +97,16 @@ export function RoomProvider({
   );
 
   // Cursors are per tab (clientId); avatars dedupe by person (userId).
-  const identity: RealtimeIdentity = {
-    clientId: getClientId(),
-    userId: me.userId,
-    displayName: me.displayName,
-  };
+  // Memoized: a fresh object here would churn every identity-keyed effect
+  // in useRoomChannel/useLobbyPresence on every render.
+  const identity: RealtimeIdentity = useMemo(
+    () => ({
+      clientId: getClientId(),
+      userId: me.userId,
+      displayName: me.displayName,
+    }),
+    [me.userId, me.displayName]
+  );
 
   // The channel follows the durable room id (a new room only gets a channel —
   // presence, cursors — once its first send assigns one). On fork rows this

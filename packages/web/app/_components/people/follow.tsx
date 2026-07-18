@@ -30,11 +30,13 @@ export function useFollowCamera(): FollowTarget | null {
       targetClientIdsRef.current = new Set();
       return;
     }
-    targetClientIdsRef.current = new Set(
-      [...channel.peers.values()]
-        .filter((p) => p.userId === follow.userId && p.clientId !== me.clientId)
-        .map((p) => p.clientId)
-    );
+    const ids = new Set<string>();
+    for (const p of channel.peers.values()) {
+      if (p.userId === follow.userId && p.clientId !== me.clientId) {
+        ids.add(p.clientId);
+      }
+    }
+    targetClientIdsRef.current = ids;
   }, [channel.peers, follow, me.clientId]);
 
   // Camera: glide toward the followed cursor, at most every CAMERA_EVERY_MS.

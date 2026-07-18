@@ -76,7 +76,7 @@ export function SourcePreview({
         <iframe
           className="h-full w-full"
           referrerPolicy="no-referrer"
-          sandbox="allow-scripts allow-same-origin allow-popups allow-forms"
+          sandbox="allow-scripts allow-popups allow-forms"
           src={url}
           title={node.label}
         />

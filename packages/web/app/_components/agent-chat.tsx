@@ -35,6 +35,12 @@ import {
   PromptInputTextarea,
 } from "@/components/ai-elements/prompt-input";
 
+const textOf = (m: EveMessage): string =>
+  m.parts
+    .flatMap((part) => (part.type === "text" ? [part.text] : []))
+    .join("\n\n")
+    .trim();
+
 export function AgentChat({ headerActions }: { headerActions?: ReactNode }) {
   const room = useRoom();
   const comments = useCommentsProvider();
@@ -58,12 +64,6 @@ export function AgentChat({ headerActions }: { headerActions?: ReactNode }) {
     // Optimistic messages have no turn id yet — they're always mine.
     return name ?? (turnId ? null : room.me.displayName);
   };
-
-  const textOf = (m: EveMessage): string =>
-    m.parts
-      .flatMap((part) => (part.type === "text" ? [part.text] : []))
-      .join("\n\n")
-      .trim();
 
   // GitHub-style fork at a specific response: a durable branch row is created
   // immediately (transcript prelude + comments + authorship copied), then we

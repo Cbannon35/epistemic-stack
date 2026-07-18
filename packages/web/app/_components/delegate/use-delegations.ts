@@ -115,7 +115,9 @@ export function useDelegations(eve: EveDriver): DelegationsApi {
   const [error, setError] = useState<string | null>(null);
   const errorTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const roomIdRef = useRef(roomId);
-  roomIdRef.current = roomId;
+  useEffect(() => {
+    roomIdRef.current = roomId;
+  }, [roomId]);
 
   const syncCursors = useCallback(() => {
     setCursors([...runsRef.current.keys()].map(delegateCursorId));
@@ -469,12 +471,12 @@ export function useDelegations(eve: EveDriver): DelegationsApi {
   // re-adopt any run this tab was hosting and keep driving it.
   const resumeTriedRef = useRef(new Set<string>());
   useEffect(() => {
-    const hosted = readHosted();
+    const hosted = new Set(readHosted());
     for (const row of rows) {
       if (
         row.status !== "running" ||
         row.delegatorId !== me.userId ||
-        !hosted.includes(row.id) ||
+        !hosted.has(row.id) ||
         runsRef.current.has(row.id) ||
         resumeTriedRef.current.has(row.id)
       ) {

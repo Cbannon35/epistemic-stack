@@ -29,7 +29,9 @@ export function PingLayer() {
   const [pings, setPings] = useState<Ping[]>([]);
   const elsRef = useRef(new Map<string, HTMLDivElement>());
   const pingsRef = useRef<Ping[]>([]);
-  pingsRef.current = pings;
+  useEffect(() => {
+    pingsRef.current = pings;
+  }, [pings]);
   const pointerRef = useRef<{ x: number; y: number } | null>(null);
   const overRef = useRef(false);
   const lastSentRef = useRef(0);
@@ -44,7 +46,9 @@ export function PingLayer() {
     }, PING_LIFE_MS);
   };
   const addPingRef = useRef(addPing);
-  addPingRef.current = addPing;
+  useEffect(() => {
+    addPingRef.current = addPing;
+  });
 
   // ── receive ────────────────────────────────────────────────────────────────
   useEffect(

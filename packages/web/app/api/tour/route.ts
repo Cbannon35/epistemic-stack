@@ -60,8 +60,8 @@ function catalogNodes(nodes: GraphNodeData[]): GraphNodeData[] {
     claim: 2,
     source: 3,
   };
-  return [...nodes]
-    .sort((a, b) => priority[a.kind] - priority[b.kind])
+  return nodes
+    .toSorted((a, b) => priority[a.kind] - priority[b.kind])
     .slice(0, MAX_CATALOG_NODES);
 }
 
@@ -91,10 +91,13 @@ export async function POST(request: Request) {
   const catalogLines = catalog
     .map((n) => `${n.id} | ${n.kind} | ${n.label.slice(0, LABEL_CLIP)}`)
     .join("\n");
-  const adjacency = graph.edges
-    .filter((e) => catalogIds.has(e.source) && catalogIds.has(e.target))
-    .map((e) => `${e.source} -${e.kind}-> ${e.target}`)
-    .join("\n");
+  const adjacencyLines: string[] = [];
+  for (const e of graph.edges) {
+    if (catalogIds.has(e.source) && catalogIds.has(e.target)) {
+      adjacencyLines.push(`${e.source} -${e.kind}-> ${e.target}`);
+    }
+  }
+  const adjacency = adjacencyLines.join("\n");
 
   const { object } = await generateObject({
     model: selectEveModel(),

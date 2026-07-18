@@ -47,9 +47,19 @@ export function useRoomChannel(
   const handlersRef = useRef(new Map<RoomEventName, Set<Handler>>());
   const activityRef = useRef<PresenceMeta["activity"]>("viewing");
   const viewRef = useRef<PresenceMeta["view"]>("chat");
-  const joinedAtRef = useRef(Date.now());
+  // joinedAt is fixed the first time it's read (always from callbacks, so
+  // render stays pure) and reused for every re-track after that.
+  const joinedAtRef = useRef<number | null>(null);
+  const joinedAt = useCallback(() => {
+    if (joinedAtRef.current === null) {
+      joinedAtRef.current = Date.now();
+    }
+    return joinedAtRef.current;
+  }, []);
   const identityRef = useRef(identity);
-  identityRef.current = identity;
+  useEffect(() => {
+    identityRef.current = identity;
+  }, [identity]);
 
   const clientId = identity?.clientId ?? null;
   const userId = identity?.userId ?? null;
@@ -67,11 +77,11 @@ export function useRoomChannel(
         color: colorForUser(id.userId),
         activity: activityRef.current,
         view: viewRef.current,
-        joinedAt: joinedAtRef.current,
+        joinedAt: joinedAt(),
         updatedAt: Date.now(),
       } satisfies PresenceMeta);
     }
-  }, []);
+  }, [joinedAt]);
 
   useEffect(() => {
     if (!(roomId && clientId && userId && displayName)) {
@@ -88,15 +98,16 @@ export function useRoomChannel(
     });
     channel.on("presence", { event: "sync" }, () => {
       const state = channel.presenceState<PresenceMeta>();
-      setPeers(
-        new Map(
-          Object.entries(state)
-            .filter(([, metas]) => metas.length > 0)
-            // Re-tracks APPEND metas rather than replace — the freshest
-            // payload (e.g. a view change) is the LAST entry, not the first.
-            .map(([key, metas]) => [key, metas.at(-1) as PresenceMeta])
-        )
-      );
+      const next = new Map<string, PresenceMeta>();
+      for (const [key, metas] of Object.entries(state)) {
+        // Re-tracks APPEND metas rather than replace — the freshest
+        // payload (e.g. a view change) is the LAST entry, not the first.
+        const meta = metas.at(-1);
+        if (meta) {
+          next.set(key, meta);
+        }
+      }
+      setPeers(next);
     });
     for (const event of ROOM_EVENTS) {
       channel.on("broadcast", { event }, ({ payload }) => {

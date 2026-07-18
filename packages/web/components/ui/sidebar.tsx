@@ -285,6 +285,7 @@ function SidebarRail({ className, ...props }: React.ComponentProps<"button">) {
         {...props}
       />
       <button
+        type="button"
         aria-label="Toggle Sidebar"
         tabIndex={-1}
         onClick={toggleSidebar}
@@ -294,6 +295,7 @@ function SidebarRail({ className, ...props }: React.ComponentProps<"button">) {
         )}
       />
       <button
+        type="button"
         aria-label="Toggle Sidebar"
         tabIndex={-1}
         onClick={toggleSidebar}

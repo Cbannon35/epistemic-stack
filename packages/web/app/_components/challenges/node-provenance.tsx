@@ -285,9 +285,9 @@ export function NodeProvenance({
     setReceipts(await getNodeReceiptsAction(nodeId));
   }, [nodeId]);
 
+  // The Inspector keys this component by node id, so a node switch remounts
+  // with fresh state — this effect only ever runs the initial fetch.
   useEffect(() => {
-    setReceipts(null);
-    setChallenging(false);
     refetch();
   }, [refetch]);
 

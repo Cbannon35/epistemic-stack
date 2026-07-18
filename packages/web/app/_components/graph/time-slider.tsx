@@ -1,7 +1,7 @@
 "use client";
 
 import { PauseIcon, PlayIcon, XIcon } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 
 // Replay bar for the graph: scrub through the commons' append-only history and
 // watch the argument map assemble. The track is an activity histogram — clear
@@ -80,6 +80,10 @@ export function GraphTimeSlider({
 
   // Event-time playback: hop to the next distinct timestamp, dwell in
   // proportion to how much arrived there, and skip the quiet stretches.
+  // Effect Events keep the latest callbacks without resetting a pending
+  // dwell timer whenever the parent re-renders.
+  const onChangeEvent = useEffectEvent(onChange);
+  const onCloseEvent = useEffectEvent(onClose);
   useEffect(() => {
     if (!playing) {
       return;
@@ -88,7 +92,7 @@ export function GraphTimeSlider({
     if (next === undefined) {
       const hold = setTimeout(() => {
         setPlaying(false);
-        onClose();
+        onCloseEvent();
       }, END_HOLD_MS);
       return () => clearTimeout(hold);
     }
@@ -97,9 +101,9 @@ export function GraphTimeSlider({
       MAX_DWELL_MS,
       BASE_DWELL_MS + (arrivals - 1) * PER_ITEM_DWELL_MS
     );
-    const timer = setTimeout(() => onChange(next), dwell);
+    const timer = setTimeout(() => onChangeEvent(next), dwell);
     return () => clearTimeout(timer);
-  }, [playing, value, timestamps, arrivalsAt, onChange, onClose]);
+  }, [playing, value, timestamps, arrivalsAt]);
 
   const togglePlay = () => {
     if (playing) {

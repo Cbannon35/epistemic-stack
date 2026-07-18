@@ -122,9 +122,13 @@ export async function listChallengeableNodes(
     return [];
   }
   const graph = await buildGraphData(sessionId);
-  return graph.nodes
-    .filter((n) => n.kind !== "crux")
-    .map((n) => ({ id: n.id, kind: n.kind, label: n.label }));
+  const nodes: ChallengeableNode[] = [];
+  for (const n of graph.nodes) {
+    if (n.kind !== "crux") {
+      nodes.push({ id: n.id, kind: n.kind, label: n.label });
+    }
+  }
+  return nodes;
 }
 
 // Promote a public comment thread to a commons challenge: the quote and the

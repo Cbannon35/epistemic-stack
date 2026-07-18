@@ -346,15 +346,19 @@ export async function buildGraphData(
       kind: "mention" as const,
       t: timeOf.get(m.contributionId) ?? null,
     })),
-    ...scopedCruxes
-      .filter((x) => x.claimId)
-      .map((x) => ({
-        id: `cx:${x.id}`,
-        source: x.claimId as string,
-        target: `crux:${x.id}`,
-        kind: "crux" as const,
-        t: timeOf.get(x.contributionId) ?? null,
-      })),
+    ...scopedCruxes.flatMap((x) =>
+      x.claimId
+        ? [
+            {
+              id: `cx:${x.id}`,
+              source: x.claimId,
+              target: `crux:${x.id}`,
+              kind: "crux" as const,
+              t: timeOf.get(x.contributionId) ?? null,
+            },
+          ]
+        : []
+    ),
     ...scopedHypLinks.map((l) => ({
       id: `hl:${l.id}`,
       source: l.claimId,

@@ -21,8 +21,8 @@ export function layout(
   // isn't guaranteed. With the sort, every client computes identical positions
   // for the same graph — which is what lets live cursors and the eve tour
   // broadcast flow coordinates.
-  const sortedNodes = [...data.nodes].sort((a, b) => a.id.localeCompare(b.id));
-  const sortedEdges = [...data.edges].sort((a, b) => a.id.localeCompare(b.id));
+  const sortedNodes = data.nodes.toSorted((a, b) => a.id.localeCompare(b.id));
+  const sortedEdges = data.edges.toSorted((a, b) => a.id.localeCompare(b.id));
   const sim = sortedNodes.map((n) => ({ id: n.id, kind: n.kind })) as Array<{
     id: string;
     kind: string;

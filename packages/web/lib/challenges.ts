@@ -212,7 +212,9 @@ function buildThreads(rows: ChallengeRow[]): ChallengeThread[] {
   const roots = rows.filter((r) => r.respondsTo === null);
   return roots.map((root) => ({
     challenge: toEntry(root),
-    responses: rows.filter((r) => r.respondsTo === root.id).map(toEntry),
+    responses: rows.flatMap((r) =>
+      r.respondsTo === root.id ? [toEntry(r)] : []
+    ),
   }));
 }
 

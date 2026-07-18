@@ -81,11 +81,11 @@ export function NodeMentionPicker({
     const url = roomId
       ? `/api/graph?investigation=${encodeURIComponent(roomId)}`
       : "/api/graph";
-    let cancelled = false;
-    fetch(url)
+    const controller = new AbortController();
+    fetch(url, { signal: controller.signal })
       .then((res) => (res.ok ? (res.json() as Promise<GraphData>) : null))
       .then((data) => {
-        if (cancelled || !data) {
+        if (!data) {
           setNodes((prev) => prev ?? []);
           return;
         }
@@ -97,10 +97,12 @@ export function NodeMentionPicker({
           }))
         );
       })
-      .catch(() => setNodes([]));
-    return () => {
-      cancelled = true;
-    };
+      .catch(() => {
+        if (!controller.signal.aborted) {
+          setNodes([]);
+        }
+      });
+    return () => controller.abort();
   }, [open, roomId]);
 
   const close = useCallback((refocus: boolean) => {

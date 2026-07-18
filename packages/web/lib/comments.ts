@@ -196,9 +196,11 @@ export async function queuedContextFor(
     quote: root.quote,
     entries: [
       { author: root.authorName, body: root.body },
-      ...replies
-        .filter((reply) => reply.parentId === root.id)
-        .map((reply) => ({ author: reply.authorName, body: reply.body })),
+      ...replies.flatMap((reply) =>
+        reply.parentId === root.id
+          ? [{ author: reply.authorName, body: reply.body }]
+          : []
+      ),
     ],
   }));
 }

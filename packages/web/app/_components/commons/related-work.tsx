@@ -25,8 +25,7 @@ function firstQuestion(messages: readonly Msg[]): string | null {
     return null;
   }
   const text = (first.parts ?? [])
-    .filter((p) => p.type === "text" && p.text)
-    .map((p) => p.text)
+    .flatMap((p) => (p.type === "text" && p.text ? [p.text] : []))
     .join(" ");
   return text.trim() || null;
 }
@@ -69,8 +68,11 @@ export function RelatedPriorWork() {
       const body = (await search.json()) as { hits: CommonsHit[] };
       setHits(
         body.hits
-          .filter((h) => h.kind === "claim" || h.kind === "hypothesis")
-          .filter((h) => h.investigationId)
+          .filter(
+            (h) =>
+              (h.kind === "claim" || h.kind === "hypothesis") &&
+              h.investigationId
+          )
           .slice(0, MAX_SHOWN)
       );
     };

@@ -81,14 +81,18 @@ export function useTour(eve: EveDriver) {
   const rf = useReactFlow();
   const [phase, setPhase] = useState<TourPhase>({ kind: "idle" });
   const phaseRef = useRef(phase);
-  phaseRef.current = phase;
+  useEffect(() => {
+    phaseRef.current = phase;
+  }, [phase]);
   /** Eve cursor ids to render — one per live tour/answer. */
   const [eveCursors, setEveCursors] = useState<readonly string[]>([]);
   const toursRef = useRef(new Map<string, ActiveTour>());
   const cancelRef = useRef(false);
   const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const roomRef = useRef(room);
-  roomRef.current = room;
+  useEffect(() => {
+    roomRef.current = room;
+  }, [room]);
   const { on, send, setActivity } = channel;
 
   const syncCursors = useCallback(() => {
@@ -210,8 +214,7 @@ export function useTour(eve: EveDriver) {
       .slice(-CONTEXT_MESSAGES)
       .map((m) => {
         const text = m.parts
-          .filter((p) => p.type === "text" && p.text)
-          .map((p) => (p.type === "text" ? p.text : ""))
+          .flatMap((p) => (p.type === "text" && p.text ? [p.text] : []))
           .join(" ")
           .slice(0, CONTEXT_CLAMP);
         return text ? `${m.role}: ${text}` : null;

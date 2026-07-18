@@ -1,7 +1,7 @@
 "use client";
 
 import type { RealtimeChannel } from "@supabase/supabase-js";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { colorForUser } from "@/lib/realtime/color";
 import {
   dedupeByUser,
@@ -23,8 +23,18 @@ export function useLobbyPresence(
   );
   const channelRef = useRef<RealtimeChannel | null>(null);
   const roomIdRef = useRef(roomId);
-  roomIdRef.current = roomId;
-  const joinedAtRef = useRef(Date.now());
+  useEffect(() => {
+    roomIdRef.current = roomId;
+  }, [roomId]);
+  // joinedAt is fixed the first time it's read (always from callbacks, so
+  // render stays pure) and reused for every re-track after that.
+  const joinedAtRef = useRef<number | null>(null);
+  const joinedAt = useCallback(() => {
+    if (joinedAtRef.current === null) {
+      joinedAtRef.current = Date.now();
+    }
+    return joinedAtRef.current;
+  }, []);
 
   const clientId = identity?.clientId ?? null;
   const userId = identity?.userId ?? null;
@@ -65,7 +75,7 @@ export function useLobbyPresence(
           displayName,
           color: colorForUser(userId),
           roomId: roomIdRef.current,
-          joinedAt: joinedAtRef.current,
+          joinedAt: joinedAt(),
           updatedAt: Date.now(),
         } satisfies LobbyMeta);
       }
@@ -75,7 +85,7 @@ export function useLobbyPresence(
       channelRef.current = null;
       supabase.removeChannel(channel);
     };
-  }, [clientId, userId, displayName]);
+  }, [clientId, userId, displayName, joinedAt]);
 
   // Re-track when the room changes (same channel, updated payload).
   useEffect(() => {
@@ -87,11 +97,11 @@ export function useLobbyPresence(
         displayName,
         color: colorForUser(userId),
         roomId,
-        joinedAt: joinedAtRef.current,
+        joinedAt: joinedAt(),
         updatedAt: Date.now(),
       } satisfies LobbyMeta);
     }
-  }, [roomId, clientId, userId, displayName]);
+  }, [roomId, clientId, userId, displayName, joinedAt]);
 
   return byRoom;
 }

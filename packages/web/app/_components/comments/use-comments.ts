@@ -94,8 +94,7 @@ export function useCommentsProvider(): CommentsValue {
       .slice(-6)
       .map((m) => {
         const text = m.parts
-          .filter((p) => p.type === "text" && p.text)
-          .map((p) => (p.type === "text" ? p.text : ""))
+          .flatMap((p) => (p.type === "text" && p.text ? [p.text] : []))
           .join(" ")
           .slice(0, 300);
         return text ? `${m.role}: ${text}` : null;

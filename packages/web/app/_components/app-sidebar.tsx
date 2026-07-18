@@ -13,7 +13,7 @@ import {
   Trash2Icon,
 } from "lucide-react";
 import Link from "next/link";
-import { useParams, usePathname, useRouter } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { Collapsible as CollapsiblePrimitive } from "radix-ui";
 import { type FormEvent, useEffect, useRef, useState } from "react";
 import { ConnectAgentDialog } from "@/app/_components/agents/connect-agent-dialog";
@@ -69,8 +69,7 @@ function firstUserQuestion(messages: readonly Msg[]): string | null {
     return null;
   }
   const text = (first.parts ?? [])
-    .filter((p) => p.type === "text" && p.text)
-    .map((p) => p.text)
+    .flatMap((p) => (p.type === "text" && p.text ? [p.text] : []))
     .join(" ");
   return text.trim() || null;
 }
@@ -179,7 +178,6 @@ function ForkRowMenu({
   onDeleted: (id: string) => void;
 }) {
   const router = useRouter();
-  const pathname = usePathname();
   const [mode, setMode] = useState<"rename" | "delete" | null>(null);
   const [title, setTitle] = useState(inv.title);
   const [busy, setBusy] = useState(false);
@@ -220,7 +218,9 @@ function ForkRowMenu({
         // you're standing in needs a hard navigation — a soft push keeps the
         // stale cached sidebar (and a dead room) mounted.
         onDeleted(inv.id);
-        if (pathname === `/i/${inv.id}`) {
+        // Read at click time — subscribing via usePathname would re-render
+        // every fork row on each URL change just for this comparison.
+        if (window.location.pathname === `/i/${inv.id}`) {
           window.location.assign("/");
         } else {
           router.refresh();

@@ -71,8 +71,8 @@ function catalogNodes(nodes: GraphNodeData[]): GraphNodeData[] {
     claim: 2,
     source: 3,
   };
-  return [...nodes]
-    .sort((a, b) => priority[a.kind] - priority[b.kind])
+  return nodes
+    .toSorted((a, b) => priority[a.kind] - priority[b.kind])
     .slice(0, MAX_CATALOG_NODES);
 }
 
@@ -276,8 +276,15 @@ async function researchPhase(
       narration: "No web search this run — working from the existing record.",
     });
   }
-  for (const query of state.queries) {
-    const results = await searchWeb(query);
+  // Searches are independent reads — fan out, then fold results back in
+  // query order so findings and beats stay deterministic.
+  const searchResults = await Promise.all(
+    state.queries.map(async (query) => ({
+      query,
+      results: await searchWeb(query),
+    }))
+  );
+  for (const { query, results } of searchResults) {
     findings.push(...results);
     beats.push({
       kind: "research",
@@ -386,19 +393,20 @@ async function synthesizePhase(
   const graph = await buildGraphData(row.sessionId);
   const catalog = catalogNodes(graph.nodes);
   const claimIds = new Set(
-    catalog.filter((n) => n.kind === "claim").map((n) => n.id)
+    catalog.flatMap((n) => (n.kind === "claim" ? [n.id] : []))
   );
   const hypothesisIds = new Set(
-    catalog.filter((n) => n.kind === "hypothesis").map((n) => n.id)
+    catalog.flatMap((n) => (n.kind === "hypothesis" ? [n.id] : []))
   );
   const examined = state.examine
-    .map((e) => {
+    .flatMap((e) => {
       const node = catalog.find((n) => n.id === e.nodeId);
       return node
-        ? `${node.id} | ${node.kind} | ${node.label.slice(0, LABEL_CLIP)} — ${e.note}`
-        : null;
+        ? [
+            `${node.id} | ${node.kind} | ${node.label.slice(0, LABEL_CLIP)} — ${e.note}`,
+          ]
+        : [];
     })
-    .filter(Boolean)
     .join("\n");
   const findingLines = state.findings
     .map(
