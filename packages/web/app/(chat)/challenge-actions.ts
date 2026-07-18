@@ -10,6 +10,7 @@ import {
   commentThreadSeed,
   fileChallenge,
   getNodeReceipts,
+  normalizeEvidenceUrl,
   resolveNodeTarget,
   respondToChallenge,
 } from "@/lib/challenges";
@@ -73,13 +74,17 @@ export async function fileNodeChallenge(input: {
   if (!target) {
     return { ok: false, error: "this node cannot be challenged" };
   }
+  const evidence = normalizeEvidenceUrl(input.evidenceUrl);
+  if (evidence.error) {
+    return { ok: false, error: evidence.error };
+  }
   await ensureContributor(user.id, user.email ?? user.id);
   await fileChallenge({
     contributorId: user.id,
     target,
     challengeType: input.challengeType,
     body: body.slice(0, 4000),
-    evidenceUrl: input.evidenceUrl?.trim() || null,
+    evidenceUrl: evidence.url,
     sessionId: input.sessionId,
   });
   return { ok: true };
@@ -96,12 +101,16 @@ export async function respondToChallengeAction(input: {
   if (!(user && body)) {
     return { ok: false };
   }
+  const evidence = normalizeEvidenceUrl(input.evidenceUrl);
+  if (evidence.error) {
+    return { ok: false };
+  }
   await ensureContributor(user.id, user.email ?? user.id);
   const id = await respondToChallenge({
     contributorId: user.id,
     challengeId: input.challengeId,
     body: body.slice(0, 4000),
-    evidenceUrl: input.evidenceUrl?.trim() || null,
+    evidenceUrl: evidence.url,
     sessionId: input.sessionId,
   });
   return { ok: id !== null };

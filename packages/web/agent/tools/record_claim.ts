@@ -42,6 +42,9 @@ export default defineTool({
       sessionId: ctx?.session?.id,
       turnId: ctx?.session?.turn?.id,
     });
+    if ("error" in result) {
+      return result;
+    }
     return {
       claim_id: result.canonicalId,
       is_new: result.isNew,

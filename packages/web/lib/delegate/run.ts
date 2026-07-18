@@ -379,6 +379,10 @@ function clip(text: string, n = 90): string {
   return text.length > n ? `${text.slice(0, n)}…` : text;
 }
 
+function normalizeWs(text: string): string {
+  return text.replace(/\s+/g, " ").trim();
+}
+
 async function synthesizePhase(
   row: {
     id: string;
@@ -448,12 +452,26 @@ async function synthesizePhase(
   };
   // Source rows are content-addressed — record each used finding once.
   const sourceIdByFinding = new Map<number, string>();
-  const newClaimIds: string[] = [];
+  // Null-padded on every skip so new:<i> placeholders stay aligned to claims[i].
+  const newClaimIds: (string | null)[] = [];
 
   for (const candidate of object.claims) {
     const finding = state.findings[candidate.findingIndex];
     if (!finding) {
+      newClaimIds.push(null);
       continue; // No receipt, no claim.
+    }
+    // The verbatim rule is enforced, not trusted — a quote that isn't actually
+    // in the finding's snippet would persist as a fake receipt.
+    const quote = normalizeWs(candidate.quote);
+    if (!quote || !normalizeWs(finding.snippet).includes(quote)) {
+      newClaimIds.push(null);
+      beats.push({
+        kind: "record",
+        nodeId: null,
+        narration: `Dropped a claim — its quote isn't verbatim in the source: ${clip(candidate.text)}`,
+      });
+      continue;
     }
     let sourceId = sourceIdByFinding.get(candidate.findingIndex);
     if (!sourceId) {
@@ -478,6 +496,10 @@ async function synthesizePhase(
       quote: candidate.quote,
       sessionId: row.sessionId,
     });
+    if ("error" in result) {
+      newClaimIds.push(null);
+      continue;
+    }
     newClaimIds.push(result.canonicalId);
     output.claims.push(result.canonicalId);
     beats.push({

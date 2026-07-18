@@ -211,6 +211,9 @@ function registerWriteTools(server: McpServer, scope: AgentScope): void {
         sessionId: investigation_id,
         contributorId: me,
       });
+      if ("error" in result) {
+        return asText({ error: result.error });
+      }
       announce(
         scope,
         investigation_id,
@@ -439,7 +442,10 @@ function registerWriteTools(server: McpServer, scope: AgentScope): void {
           .describe("graph node id (claims/sources bare; hyp:/rel: prefixed)"),
         challenge_type: z.enum(CHALLENGE_TYPES),
         body: z.string().min(3),
-        evidence_url: z.string().optional(),
+        evidence_url: z
+          .url({ protocol: /^https?$/ })
+          .optional()
+          .describe("http(s) URL backing the challenge"),
       },
     },
     async ({

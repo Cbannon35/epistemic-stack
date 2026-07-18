@@ -77,6 +77,28 @@ export async function resolveNodeTarget(
   return source ? { kind: "source", id: nodeId } : null;
 }
 
+// The floor for challenge evidence: a well-formed http(s) URL. Nothing fetches
+// or verifies the target — that stays a read-time concern — but a string that
+// can't even parse as a URL must not render as backing.
+export function normalizeEvidenceUrl(raw: string | null | undefined): {
+  url: string | null;
+  error?: string;
+} {
+  const trimmed = raw?.trim();
+  if (!trimmed) {
+    return { url: null };
+  }
+  try {
+    const parsed = new URL(trimmed);
+    if (parsed.protocol === "http:" || parsed.protocol === "https:") {
+      return { url: trimmed };
+    }
+  } catch {
+    // fall through to the error below
+  }
+  return { url: null, error: "evidence link must be a valid http(s) URL" };
+}
+
 export async function fileChallenge(input: {
   contributorId: string;
   target: ChallengeTarget;
@@ -99,7 +121,7 @@ export async function fileChallenge(input: {
       kind: "challenge",
       ...targetColumns(input.target),
       challengeType: input.challengeType,
-      evidenceUrl: input.evidenceUrl ?? null,
+      evidenceUrl: normalizeEvidenceUrl(input.evidenceUrl).url,
       rationale: input.body,
       method: input.method ?? "challenge@1",
       contributionId,
@@ -143,7 +165,7 @@ export async function respondToChallenge(input: {
       sourceId: challenge.sourceId,
       hypothesisId: challenge.hypothesisId,
       relationId: challenge.relationId,
-      evidenceUrl: input.evidenceUrl ?? null,
+      evidenceUrl: normalizeEvidenceUrl(input.evidenceUrl).url,
       respondsTo: input.challengeId,
       rationale: input.body,
       method: "challenge_response@1",

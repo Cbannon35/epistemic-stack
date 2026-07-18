@@ -147,7 +147,20 @@ export type RecordClaimResult = {
 // actually says it).
 export async function recordClaim(
   input: RecordClaimInput
-): Promise<RecordClaimResult> {
+): Promise<RecordClaimResult | { error: string }> {
+  // The claim row is written before its mention, so a bad source id would fail
+  // the mentions FK only after leaving an evidence-less claim behind. Validate
+  // up front and return graceful feedback, same as recordRelation.
+  const [source] = await db
+    .select({ id: schema.sources.id })
+    .from(schema.sources)
+    .where(eq(schema.sources.id, input.sourceId))
+    .limit(1);
+  if (!source) {
+    return {
+      error: `source id not found: ${input.sourceId}. Use the id returned by record_source.`,
+    };
+  }
   const normalized = input.text.trim().replace(/\s+/g, " ");
   const vec = await embed(normalized);
   const near = await nearestClaim(vec);
