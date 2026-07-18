@@ -5,76 +5,97 @@ import { graphBus } from "@/app/_components/graph/graph-bus";
 import { CursorGlyph } from "@/app/_components/presence/cursor";
 import { useRoom } from "@/app/_components/room-provider";
 import type { PresenceMeta } from "@/lib/realtime/types";
-import { dedupeByUser } from "@/lib/realtime/types";
 
-// The cursor parking lot: members whose pointer ISN'T on the graph park here,
-// as STATIC UI beside the legend — plain screen-space DOM, deliberately
-// outside the flow's coordinate space, so pan/zoom never touches it. Glyphs
-// only (identity is the hue; the name is a hover tooltip), stacked
-// vertically. When a parked member cursor-chats (`/` works from anywhere),
-// their bubble rises from their parked glyph — including your own.
+// The cursor parking lot — static UI anchored to the legend, deliberately
+// outside the flow's coordinate space so pan/zoom never touches it.
+//
+// Two zones, one live-message feature:
+//  - IDLE ROW: off-graph members' glyphs line up left→right just above the
+//    legend. Anonymous (identity is the hue; name on hover).
+//  - SPEAKING FEED: when a parked member cursor-chats (`/` from anywhere),
+//    their glyph ANIMATES to the legend's bottom-right and speaks its bubble.
+//    The next speaker takes the bottom slot and pushes earlier speakers up —
+//    a live feed, newest at the bottom. When a message expires, the glyph
+//    glides back into the row.
+// Every glyph is one absolutely-positioned element whose transform moves
+// between zone slots with a spring transition — the same element travels.
 
-const BUBBLE_FADE_MS = 4000;
+const LEGEND_W = 132;
+const LEGEND_H = 138;
+const ROW_SPACING = 20;
+const FEED_SPACING = 36;
+const FEED_MAX = 4;
+const MESSAGE_TTL_MS = 12_000;
 const SWEEP_MS = 1000;
 
-type Bubble = { text: string; ts: number };
-
-/** Who's parked: one glyph per PERSON off the graph pane, ordered by join
- * time then clientId — identical lineup on every client (presence-derived). */
-function parkedLineup(peers: Iterable<PresenceMeta>): PresenceMeta[] {
-  return dedupeByUser([...peers].filter((peer) => peer.view !== "graph")).sort(
-    (a, b) => a.joinedAt - b.joinedAt || a.clientId.localeCompare(b.clientId)
-  );
-}
+// Keyed by PERSON (userId): the lot shows one glyph per person, so a message
+// from any of their connections speaks through that one glyph.
+type Speech = { userId: string; text: string; ts: number };
 
 export function ParkingLot() {
   const { channel, me } = useRoom();
-  const parked = useMemo(
-    () => parkedLineup(channel.peers.values()),
-    [channel.peers]
-  );
-  const [bubbles, setBubbles] = useState<ReadonlyMap<string, Bubble>>(
-    new Map()
-  );
+  // One glyph per person; for YOURSELF the deciding view is THIS tab's meta
+  // (freshest-connection dedupe could hide you behind your own other tab).
+  const parked = useMemo(() => {
+    const byUser = new Map<string, PresenceMeta>();
+    for (const meta of channel.peers.values()) {
+      if (meta.clientId === me.clientId) {
+        continue; // self handled below from the own connection only
+      }
+      const existing = byUser.get(meta.userId);
+      if (!existing || meta.updatedAt > existing.updatedAt) {
+        byUser.set(meta.userId, meta);
+      }
+    }
+    const others = [...byUser.values()].filter(
+      (meta) => meta.view !== "graph" && meta.userId !== me.userId
+    );
+    const own = channel.peers.get(me.clientId);
+    const lineup = own && own.view !== "graph" ? [own, ...others] : others;
+    return lineup.sort(
+      (a, b) => a.joinedAt - b.joinedAt || a.userId.localeCompare(b.userId)
+    );
+  }, [channel.peers, me.clientId, me.userId]);
 
-  // Bubbles ride the same cursor-chat broadcasts the live layer uses; own
-  // messages arrive via the local bus (broadcasts skip self).
-  const { on } = channel;
+  // The feed: oldest→newest committed/live messages, one entry per person.
+  const [speech, setSpeech] = useState<readonly Speech[]>([]);
+
+  const speak = (userId: string, text: string) => {
+    setSpeech((prev) => [
+      ...prev.filter((s) => s.userId !== userId),
+      { userId, text, ts: Date.now() },
+    ]);
+  };
+
+  const { on, peers } = channel;
   useEffect(
     () =>
       on("cursor-chat", (p) => {
-        setBubbles((prev) => {
-          const next = new Map(prev);
-          if (p.done && p.text === "") {
-            next.delete(p.clientId);
-          } else {
-            next.set(p.clientId, { text: p.text, ts: Date.now() });
-          }
-          return next;
-        });
+        const userId = peers.get(p.clientId)?.userId;
+        if (!userId) {
+          return;
+        }
+        if (p.done && p.text === "") {
+          setSpeech((prev) => prev.filter((s) => s.userId !== userId));
+          return;
+        }
+        speak(userId, p.text);
       }),
-    [on]
+    [on, peers]
   );
+  // Own messages arrive via the local bus — broadcasts skip self.
   useEffect(
-    () =>
-      graphBus.on("selfCursorChat", ({ text }) => {
-        setBubbles((prev) =>
-          new Map(prev).set(me.clientId, { text, ts: Date.now() })
-        );
-      }),
-    [me.clientId]
+    () => graphBus.on("selfCursorChat", ({ text }) => speak(me.userId, text)),
+    [me.userId]
   );
   useEffect(() => {
     const sweep = setInterval(() => {
       const now = Date.now();
-      setBubbles((prev) => {
-        if (![...prev.values()].some((b) => now - b.ts > BUBBLE_FADE_MS)) {
-          return prev;
-        }
-        return new Map(
-          [...prev].filter(([, b]) => now - b.ts <= BUBBLE_FADE_MS)
-        );
-      });
+      setSpeech((prev) =>
+        prev.some((s) => now - s.ts > MESSAGE_TTL_MS)
+          ? prev.filter((s) => now - s.ts <= MESSAGE_TTL_MS)
+          : prev
+      );
     }, SWEEP_MS);
     return () => clearInterval(sweep);
   }, []);
@@ -82,25 +103,46 @@ export function ParkingLot() {
   if (parked.length === 0) {
     return null;
   }
+
+  // Slot resolution: feed position wins (newest = bottom slot 0, earlier
+  // speakers pushed up); everyone else takes their idle-row index.
+  const feed = speech
+    .filter((s) => parked.some((p) => p.userId === s.userId))
+    .slice(-FEED_MAX);
+  const feedIndexOf = new Map(
+    feed.map((s, i) => [s.userId, feed.length - 1 - i])
+  );
+  const idle = parked.filter((p) => !feedIndexOf.has(p.userId));
+  const idleIndexOf = new Map(idle.map((p, i) => [p.userId, i]));
+
   return (
-    <div className="pointer-events-none absolute bottom-3 left-36 z-10 flex flex-col-reverse items-start gap-1.5">
+    <div className="pointer-events-none absolute bottom-3 left-3 z-10">
       {parked.map((peer) => {
-        const bubble = bubbles.get(peer.clientId);
+        const feedIndex = feedIndexOf.get(peer.userId);
+        const speaking = feedIndex !== undefined;
+        const x = speaking
+          ? LEGEND_W + 14
+          : (idleIndexOf.get(peer.userId) ?? 0) * ROW_SPACING;
+        const y = speaking
+          ? (feedIndex as number) * FEED_SPACING
+          : LEGEND_H + 12;
+        const message = speech.find((s) => s.userId === peer.userId);
         return (
           <div
-            className="fade-in flex items-end gap-1"
+            className="fade-in absolute bottom-0 left-0 flex items-end gap-1.5 transition-transform duration-500 [transition-timing-function:var(--ease-spring)]"
             key={peer.clientId}
+            style={{ transform: `translate(${x}px, ${-y}px)` }}
             title={`${peer.displayName}${
               peer.clientId === me.clientId ? " (you)" : ""
             } · in the chat`}
           >
             <CursorGlyph color={peer.color} />
-            {bubble ? (
+            {speaking && message ? (
               <div
-                className="fade-in max-w-56 whitespace-pre-wrap rounded-lg rounded-bl-sm border bg-background/95 px-2 py-1 text-foreground text-xs shadow-[var(--shadow-float)] backdrop-blur"
+                className="fade-in max-w-56 truncate whitespace-pre rounded-lg rounded-bl-sm border bg-background/95 px-2 py-1 text-foreground text-xs shadow-[var(--shadow-float)] backdrop-blur"
                 style={{ borderColor: peer.color }}
               >
-                {bubble.text}
+                {message.text}
               </div>
             ) : null}
           </div>
