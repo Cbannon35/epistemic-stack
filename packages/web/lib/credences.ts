@@ -1,7 +1,7 @@
 import "server-only";
-import { createHash } from "node:crypto";
 import { createDb, schema } from "@epistack/db";
 import { asc, eq, inArray } from "drizzle-orm";
+import { contentHash } from "@/lib/content-hash";
 
 // Belief timeline over hypotheses. Credences are NOT a new table: the schema's
 // append-only `assessments` (kind = 'credence') exists precisely so belief is
@@ -46,10 +46,7 @@ export async function recordCredence(input: {
     .values({
       contributorId: input.contributorId,
       method: CREDENCE_METHOD,
-      payloadHash: createHash("sha256")
-        .update(payload)
-        .digest("hex")
-        .slice(0, 32),
+      payloadHash: contentHash(payload),
       sessionId: input.sessionId ?? null,
     })
     .returning({ id: schema.contributions.id });

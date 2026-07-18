@@ -192,22 +192,8 @@ export function AgentChat({ headerActions }: { headerActions?: ReactNode }) {
           </p>
         ) : null}
 
-        {/* `/` in an EMPTY composer opens cursor chat (the lot speaks for
-            you) — the composer holds focus in this pane, so without this the
-            room-wide `/` binding could never fire here. Any other content
-            keeps `/` as a normal character. */}
         <div
           className="relative mx-auto w-full max-w-3xl p-4 pt-0"
-          onKeyDown={(e) => {
-            if (
-              e.key === "/" &&
-              (e.target as HTMLTextAreaElement).value === "" &&
-              !(e.metaKey || e.ctrlKey || e.altKey)
-            ) {
-              e.preventDefault();
-              graphBus.emit("openCursorChat", {});
-            }
-          }}
           ref={composerRef}
         >
           <NodeMentionPicker containerRef={composerRef} roomId={room.roomId} />
@@ -217,6 +203,20 @@ export function AgentChat({ headerActions }: { headerActions?: ReactNode }) {
             <PromptInputTextarea
               disabled={room.completed}
               onChange={noteTyping}
+              // `/` in an EMPTY composer opens cursor chat (the lot speaks
+              // for you) — the composer holds focus in this pane, so without
+              // this the room-wide `/` binding could never fire here. Any
+              // other content keeps `/` as a normal character.
+              onKeyDown={(e) => {
+                if (
+                  e.key === "/" &&
+                  e.currentTarget.value === "" &&
+                  !(e.metaKey || e.ctrlKey || e.altKey)
+                ) {
+                  e.preventDefault();
+                  graphBus.emit("openCursorChat", {});
+                }
+              }}
               placeholder={
                 room.completed
                   ? "This investigation has concluded."

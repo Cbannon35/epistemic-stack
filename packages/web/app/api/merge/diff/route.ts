@@ -1,14 +1,11 @@
 import { NextResponse } from "next/server";
 import { computeMergeDiff, getMergeRequest } from "@/lib/merge";
-import { createClient } from "@/lib/supabase/server";
+import { getAuthUser } from "@/lib/supabase/server";
 
 // What a merge would adopt: `?mr=<id>` diffs an existing request's pair;
 // `?source=&target=` previews before one exists (the propose dialog).
 export async function GET(request: Request) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getAuthUser();
   if (!user) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }

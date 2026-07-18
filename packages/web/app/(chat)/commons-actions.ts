@@ -1,7 +1,6 @@
 "use server";
 
-import { formatCommonsDigest, searchCommons } from "@/lib/commons-search";
-import { getAncestorChain } from "@/lib/investigations";
+import { buildCommonsSeed } from "@/lib/commons-search";
 import { createClient } from "@/lib/supabase/server";
 
 async function requireUser() {
@@ -21,18 +20,8 @@ export async function getCommonsSendContext(input: {
   excludeSessionId: string | null;
 }): Promise<string | null> {
   const user = await requireUser();
-  if (!user || !input.query.trim()) {
+  if (!user) {
     return null;
   }
-  const excludeLineage = input.excludeSessionId
-    ? await getAncestorChain(input.excludeSessionId)
-    : [];
-  const hits = await searchCommons({
-    query: input.query,
-    mode: "or",
-    kinds: ["claim", "hypothesis"],
-    excludeLineage,
-    limit: 8,
-  });
-  return formatCommonsDigest(hits);
+  return await buildCommonsSeed(input.query, input.excludeSessionId);
 }

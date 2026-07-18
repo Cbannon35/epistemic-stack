@@ -20,6 +20,7 @@ import {
   markCommentsConsumed,
 } from "@/app/(chat)/comment-actions";
 import { getCommonsSendContext } from "@/app/(chat)/commons-actions";
+import { FRESH_START_POLICY } from "@/lib/commons-policy";
 import type { TurnAuthor } from "@/lib/investigations";
 
 // Multiplayer chat store. eve's durable session stream is the single source of
@@ -274,8 +275,7 @@ export class RoomStore {
         clientContext.commonsContext = commonsContext;
       }
       if (!this.#seedFromCommons) {
-        clientContext.commonsPolicy =
-          "fresh-start: this investigation starts blank by choice. Do NOT call query_commons to seed from prior investigations — research the question fresh. Recording sources/claims to the commons is unchanged.";
+        clientContext.commonsPolicy = FRESH_START_POLICY;
       }
 
       const session = this.#client.session(state);

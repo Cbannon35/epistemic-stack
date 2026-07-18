@@ -27,3 +27,14 @@ export async function createClient() {
     }
   );
 }
+
+/** The signed-in user, or null — the one auth check every server action and
+ * route handler shares (this file is not "use server", so it can export a
+ * plain helper). */
+export async function getAuthUser() {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  return user;
+}

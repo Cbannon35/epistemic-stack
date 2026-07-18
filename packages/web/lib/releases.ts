@@ -1,7 +1,7 @@
 import "server-only";
-import { createHash } from "node:crypto";
 import { createDb, schema } from "@epistack/db";
 import { desc, eq } from "drizzle-orm";
+import { contentHash } from "@/lib/content-hash";
 import { buildGraphData, type GraphPayload } from "@/lib/graph-data";
 import {
   getScopeHops,
@@ -17,9 +17,6 @@ import type { ReleaseRecord } from "@/lib/release-types";
 // The recipe survives room renames and fork deletion (title snapshot, no FK).
 
 const db = createDb();
-
-const contentHash = (text: string): string =>
-  createHash("sha256").update(text).digest("hex").slice(0, 32);
 
 type ReleaseRow = typeof schema.releases.$inferSelect;
 

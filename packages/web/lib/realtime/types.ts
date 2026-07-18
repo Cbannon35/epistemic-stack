@@ -43,6 +43,11 @@ export type LobbyMeta = {
 
 export const LOBBY_TOPIC = "lobby";
 
+/** Off the graph pane ⇒ parked in the lot. The ONE truth both the flow
+ * cursor layer (hide) and the parking lot (show) filter by — keep them in
+ * lockstep through this predicate. */
+export const isParked = (meta: PresenceMeta): boolean => meta.view !== "graph";
+
 /** One entry per PERSON: freshest meta per userId, ordered by join time. */
 export function dedupeByUser<
   T extends { userId: string; joinedAt: number; updatedAt: number },

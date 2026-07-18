@@ -2,21 +2,28 @@ import "server-only";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { Client } from "eve/client";
 import { z } from "zod";
-import type { AgentPrincipal } from "@/lib/agent-keys";
 import { getComment, insertComment } from "@/lib/comments";
-import { formatCommonsDigest, searchCommons } from "@/lib/commons-search";
+import { FRESH_START_POLICY } from "@/lib/commons-policy";
+import { buildCommonsSeed } from "@/lib/commons-search";
 import { startDelegation, stepDelegation } from "@/lib/delegate/run";
 import type { DelegationAdvance } from "@/lib/delegate/types";
 import {
   claimEveSession,
-  getAncestorChain,
   getInvestigation,
   insertTurnAuthor,
 } from "@/lib/investigations";
 import { buildJournal } from "@/lib/journal";
-import { broadcastRoomEvent } from "@/lib/realtime/server-broadcast";
+import {
+  type AgentScope,
+  announce as announceShared,
+  asText,
+  unknownInvestigation,
+} from "@/lib/mcp/shared";
+import {
+  broadcastRoomEvent,
+  broadcastRoomEvents,
+} from "@/lib/realtime/server-broadcast";
 import type {
-  AgentActivityEvent,
   CommentsChangedEvent,
   DelegationEndEvent,
   DelegationStartEvent,
@@ -33,40 +40,19 @@ const TURN_ACCEPT_TIMEOUT_MS = 25_000;
 const REPLY_WAIT_BUDGET_MS = 30_000;
 const REPLY_CLIP = 4000;
 
-export type AgentCollabScope = { origin: string; agent: AgentPrincipal };
+export type AgentCollabScope = AgentScope;
 
-function asText(payload: unknown) {
-  return {
-    content: [
-      { type: "text" as const, text: JSON.stringify(payload, null, 2) },
-    ],
-  };
-}
-
-function announce(
+// Collaboration actions live in the CHAT pane by default.
+const announce = (
   scope: AgentCollabScope,
   investigationId: string,
   action: string,
   view: "chat" | "graph" = "chat"
-): void {
-  const payload: AgentActivityEvent = {
-    contributorId: scope.agent.contributorId,
-    name: scope.agent.name,
-    onBehalfOfName: scope.agent.onBehalfOfName,
-    action,
-    view,
-    nodeId: null,
-    investigationId,
-    ts: Date.now(),
-  };
-  broadcastRoomEvent(investigationId, "agent-activity", payload).catch(
-    () => undefined
-  );
-}
+) => announceShared(scope, investigationId, action, { view });
 
 // ── transcript ───────────────────────────────────────────────────────────────
 
-function registerTranscript(server: McpServer, scope: AgentCollabScope): void {
+function registerTranscript(server: McpServer): void {
   server.registerTool(
     "get_transcript",
     {
@@ -147,9 +133,9 @@ function registerComments(server: McpServer, scope: AgentCollabScope): void {
       quote_prefix,
       quote_suffix,
     }) => {
-      const inv = await getInvestigation(investigation_id);
-      if (!inv) {
-        return asText({ error: `unknown investigation ${investigation_id}` });
+      const missing = await unknownInvestigation(investigation_id);
+      if (missing) {
+        return missing;
       }
       const id = await insertComment({
         sessionId: investigation_id,
@@ -181,7 +167,7 @@ function registerComments(server: McpServer, scope: AgentCollabScope): void {
     },
     async ({ comment_id, body }) => {
       const target = await getComment(comment_id);
-      if (!target || target.visibility !== "public") {
+      if (target?.visibility !== "public") {
         return asText({ error: "unknown comment" });
       }
       const rootId = target.parentId ?? target.id;
@@ -325,22 +311,12 @@ function registerSendMessage(server: McpServer, scope: AgentCollabScope): void {
         author: scope.agent.name,
       };
       if (inv.seedFromCommons) {
-        const lineage = await getAncestorChain(investigation_id);
-        const digest = formatCommonsDigest(
-          await searchCommons({
-            query: message,
-            mode: "or",
-            kinds: ["claim", "hypothesis"],
-            excludeLineage: lineage,
-            limit: 8,
-          })
-        );
+        const digest = await buildCommonsSeed(message, investigation_id);
         if (digest) {
           clientContext.commonsContext = digest;
         }
       } else {
-        clientContext.commonsPolicy =
-          "fresh-start: this investigation starts blank by choice. Do NOT call query_commons to seed from prior investigations — research the question fresh. Recording sources/claims to the commons is unchanged.";
+        clientContext.commonsPolicy = FRESH_START_POLICY;
       }
 
       broadcastRoomEvent(investigation_id, "turn:pending", {
@@ -408,7 +384,7 @@ function registerSendMessage(server: McpServer, scope: AgentCollabScope): void {
       return asText({
         ok: true,
         turn_id: turnId,
-        queued: turnId === null || undefined,
+        queued: turnId === null ? true : undefined,
         eve_reply: reply ? reply.slice(0, REPLY_CLIP) : null,
         note: reply
           ? undefined
@@ -436,6 +412,7 @@ async function broadcastAdvance(
 ): Promise<void> {
   const hostId = agentHostId(scope);
   const ts = Date.now();
+  const messages: Parameters<typeof broadcastRoomEvents>[1][number][] = [];
   if (opts.started) {
     const start: DelegationStartEvent = {
       delegationId: advance.delegationId,
@@ -444,7 +421,7 @@ async function broadcastAdvance(
       brief: opts.started,
       ts,
     };
-    await broadcastRoomEvent(investigationId, "delegation-start", start);
+    messages.push({ event: "delegation-start", payload: start });
   }
   for (const [i, beat] of advance.beats.entries()) {
     const step: DelegationStepEvent = {
@@ -457,9 +434,9 @@ async function broadcastAdvance(
       narration: beat.narration,
       x: 0,
       y: 0,
-      ts: Date.now(),
+      ts,
     };
-    await broadcastRoomEvent(investigationId, "delegation-step", step);
+    messages.push({ event: "delegation-step", payload: step });
   }
   if (advance.done) {
     const end: DelegationEndEvent = {
@@ -467,10 +444,12 @@ async function broadcastAdvance(
       hostId,
       reason: "complete",
       summary: advance.summary,
-      ts: Date.now(),
+      ts,
     };
-    await broadcastRoomEvent(investigationId, "delegation-end", end);
+    messages.push({ event: "delegation-end", payload: end });
   }
+  // One POST for the whole burst — the endpoint takes a messages array.
+  await broadcastRoomEvents(investigationId, messages);
 }
 
 function registerDelegation(server: McpServer, scope: AgentCollabScope): void {
@@ -539,7 +518,7 @@ export function registerAgentCollabTools(
   server: McpServer,
   scope: AgentCollabScope
 ): void {
-  registerTranscript(server, scope);
+  registerTranscript(server);
   registerComments(server, scope);
   registerSendMessage(server, scope);
   registerDelegation(server, scope);

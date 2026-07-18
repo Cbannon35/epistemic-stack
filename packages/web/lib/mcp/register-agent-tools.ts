@@ -14,7 +14,7 @@ import {
   recordHypothesis,
   recordRelation,
 } from "@/agent/lib/commons";
-import type { AgentPrincipal } from "@/lib/agent-keys";
+import { CHALLENGE_TYPES } from "@/lib/challenge-types";
 import { fileChallenge, resolveNodeTarget } from "@/lib/challenges";
 import { recordCredence } from "@/lib/credences";
 import { buildGraphData } from "@/lib/graph-data";
@@ -23,8 +23,14 @@ import {
   listInvestigations,
   upsertInvestigation,
 } from "@/lib/investigations";
+import {
+  type AgentScope,
+  announce as announceShared,
+  asText,
+  clip as clipShared,
+  unknownInvestigation,
+} from "@/lib/mcp/shared";
 import { broadcastRoomEvent } from "@/lib/realtime/server-broadcast";
-import type { AgentActivityEvent } from "@/lib/realtime/types";
 
 // The write-capable agent MCP surface: external agents join investigations
 // (or create their own) as FIRST-CLASS multiplayer contributors. Every write
@@ -34,50 +40,17 @@ import type { AgentActivityEvent } from "@/lib/realtime/types";
 // server-broadcast `agent-activity` events each write fires.
 
 const NODE_CATALOG_CAP = 150;
-const CHALLENGE_TYPES = [
-  "counter_evidence",
-  "rival_interpretation",
-  "methodological_objection",
-] as const;
 
-export type AgentScope = { origin: string; agent: AgentPrincipal };
+export type { AgentScope } from "@/lib/mcp/shared";
 
-function asText(payload: unknown) {
-  return {
-    content: [
-      { type: "text" as const, text: JSON.stringify(payload, null, 2) },
-    ],
-  };
-}
-
-async function requireInvestigation(id: string) {
-  const inv = await getInvestigation(id);
-  return inv ?? null;
-}
-
-function announce(
+// Graph writes announce into the graph pane; short labels for narration.
+const announce = (
   scope: AgentScope,
   investigationId: string,
   action: string,
   nodeId?: string | null
-): void {
-  const payload: AgentActivityEvent = {
-    contributorId: scope.agent.contributorId,
-    name: scope.agent.name,
-    onBehalfOfName: scope.agent.onBehalfOfName,
-    action,
-    view: "graph",
-    nodeId: nodeId ?? null,
-    investigationId,
-    ts: Date.now(),
-  };
-  // Fire-and-forget: liveness is a nudge, the receipt already landed.
-  broadcastRoomEvent(investigationId, "agent-activity", payload).catch(
-    () => undefined
-  );
-}
-
-const clip = (s: string, n = 80) => (s.length > n ? `${s.slice(0, n)}…` : s);
+) => announceShared(scope, investigationId, action, { nodeId, view: "graph" });
+const clip = (s: string, n = 80) => clipShared(s, n);
 
 function registerInvestigationTools(
   server: McpServer,
@@ -140,7 +113,7 @@ function registerInvestigationTools(
       inputSchema: { investigation_id: z.string().min(1) },
     },
     async ({ investigation_id }) => {
-      const inv = await requireInvestigation(investigation_id);
+      const inv = await getInvestigation(investigation_id);
       if (!inv) {
         return asText({ error: `unknown investigation ${investigation_id}` });
       }
@@ -179,8 +152,9 @@ function registerWriteTools(server: McpServer, scope: AgentScope): void {
       },
     },
     async ({ investigation_id, text, url, title, author, publisher, date }) => {
-      if (!(await requireInvestigation(investigation_id))) {
-        return asText({ error: `unknown investigation ${investigation_id}` });
+      const missing = await unknownInvestigation(investigation_id);
+      if (missing) {
+        return missing;
       }
       const sourceId = await addSource({
         text,
@@ -225,8 +199,9 @@ function registerWriteTools(server: McpServer, scope: AgentScope): void {
       },
     },
     async ({ investigation_id, claim, source_id, quote, descriptors }) => {
-      if (!(await requireInvestigation(investigation_id))) {
-        return asText({ error: `unknown investigation ${investigation_id}` });
+      const missing = await unknownInvestigation(investigation_id);
+      if (missing) {
+        return missing;
       }
       const result = await recordClaim({
         text: claim,
@@ -271,8 +246,9 @@ function registerWriteTools(server: McpServer, scope: AgentScope): void {
       type,
       rationale,
     }) => {
-      if (!(await requireInvestigation(investigation_id))) {
-        return asText({ error: `unknown investigation ${investigation_id}` });
+      const missing = await unknownInvestigation(investigation_id);
+      if (missing) {
+        return missing;
       }
       const result = await recordRelation({
         fromClaimId: from_claim_id,
@@ -307,8 +283,9 @@ function registerWriteTools(server: McpServer, scope: AgentScope): void {
       },
     },
     async ({ investigation_id, statement, answer_bearing }) => {
-      if (!(await requireInvestigation(investigation_id))) {
-        return asText({ error: `unknown investigation ${investigation_id}` });
+      const missing = await unknownInvestigation(investigation_id);
+      if (missing) {
+        return missing;
       }
       const { id } = await recordHypothesis({
         statement,
@@ -347,8 +324,9 @@ function registerWriteTools(server: McpServer, scope: AgentScope): void {
       polarity,
       diagnosticity,
     }) => {
-      if (!(await requireInvestigation(investigation_id))) {
-        return asText({ error: `unknown investigation ${investigation_id}` });
+      const missing = await unknownInvestigation(investigation_id);
+      if (missing) {
+        return missing;
       }
       const result = await linkClaimToHypothesis({
         claimId: claim_id,
@@ -384,8 +362,9 @@ function registerWriteTools(server: McpServer, scope: AgentScope): void {
       },
     },
     async ({ investigation_id, claim_id, question, implication }) => {
-      if (!(await requireInvestigation(investigation_id))) {
-        return asText({ error: `unknown investigation ${investigation_id}` });
+      const missing = await unknownInvestigation(investigation_id);
+      if (missing) {
+        return missing;
       }
       const result = await recordCrux({
         claimId: claim_id,
@@ -420,8 +399,9 @@ function registerWriteTools(server: McpServer, scope: AgentScope): void {
       },
     },
     async ({ investigation_id, hypothesis_id, credence, rationale }) => {
-      if (!(await requireInvestigation(investigation_id))) {
-        return asText({ error: `unknown investigation ${investigation_id}` });
+      const missing = await unknownInvestigation(investigation_id);
+      if (missing) {
+        return missing;
       }
       const bare = hypothesis_id.startsWith("hyp:")
         ? hypothesis_id.slice(4)
@@ -469,8 +449,9 @@ function registerWriteTools(server: McpServer, scope: AgentScope): void {
       body,
       evidence_url,
     }) => {
-      if (!(await requireInvestigation(investigation_id))) {
-        return asText({ error: `unknown investigation ${investigation_id}` });
+      const missing = await unknownInvestigation(investigation_id);
+      if (missing) {
+        return missing;
       }
       const target = await resolveNodeTarget(node_id);
       if (!target) {

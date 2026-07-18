@@ -1,7 +1,7 @@
 import "server-only";
-import { createHash } from "node:crypto";
 import { createDb, schema } from "@epistack/db";
 import { and, desc, eq, inArray, or } from "drizzle-orm";
+import { contentHash } from "@/lib/content-hash";
 import {
   buildGraphData,
   type GraphEdgeData,
@@ -28,9 +28,6 @@ import type {
 // (whose insert also repaints every client via the realtime publication).
 
 const db = createDb();
-
-const contentHash = (text: string): string =>
-  createHash("sha256").update(text).digest("hex").slice(0, 32);
 
 export type MergeDiff = {
   incoming: {
@@ -59,6 +56,27 @@ export async function previewHops(
       cutoff: hop.cutoff,
     }))
     .filter((hop) => hop.sessionIds.length > 0);
+}
+
+/** The FULL scope a reviewer previews: the target's own hops plus the
+ * source's uncovered ones — one walk per side (the graph route would
+ * otherwise re-walk the target inside buildGraphData). */
+export async function mergePreviewScope(
+  sourceId: string,
+  targetId: string
+): Promise<ScopeHop[]> {
+  const [sourceHops, targetHops] = await Promise.all([
+    getScopeHops(sourceId),
+    getScopeHops(targetId),
+  ]);
+  const covered = new Set(targetHops.flatMap((h) => h.sessionIds));
+  const extras = sourceHops
+    .map((hop) => ({
+      sessionIds: hop.sessionIds.filter((id) => !covered.has(id)),
+      cutoff: hop.cutoff,
+    }))
+    .filter((hop) => hop.sessionIds.length > 0);
+  return [...targetHops, ...extras];
 }
 
 /** Nodes/edges the target would gain — computed from both scopes' payloads.
@@ -140,7 +158,9 @@ export async function openMergeRequest(input: {
   return { id: row.id };
 }
 
-export type DecideMergeResult = { ok: true } | { error: string };
+export type DecideMergeResult =
+  | { ok: true; sourceId: string; targetId: string }
+  | { error: string };
 
 export async function decideMergeRequest(input: {
   mrId: string;
@@ -197,7 +217,7 @@ export async function decideMergeRequest(input: {
       )
       .returning({ id: schema.mergeRequests.id });
     return updated.length > 0
-      ? { ok: true }
+      ? { ok: true, sourceId: mr.sourceId, targetId: mr.targetId }
       : { error: "this merge request was already decided" };
   }
 
@@ -239,7 +259,7 @@ export async function decideMergeRequest(input: {
     )
     .returning({ id: schema.mergeRequests.id });
   return updated.length > 0
-    ? { ok: true }
+    ? { ok: true, sourceId: mr.sourceId, targetId: mr.targetId }
     : { error: "this merge request was already decided" };
 }
 
@@ -257,9 +277,14 @@ export async function withdrawMergeRequest(input: {
         eq(schema.mergeRequests.status, "open")
       )
     )
-    .returning({ id: schema.mergeRequests.id });
-  return updated.length > 0
-    ? { ok: true }
+    .returning({
+      id: schema.mergeRequests.id,
+      sourceId: schema.mergeRequests.sourceId,
+      targetId: schema.mergeRequests.targetId,
+    });
+  const row = updated.at(0);
+  return row
+    ? { ok: true, sourceId: row.sourceId, targetId: row.targetId }
     : { error: "only the proposer can withdraw an open merge request" };
 }
 

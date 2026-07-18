@@ -5,6 +5,7 @@ import { notFound } from "next/navigation";
 import type { GraphEdge, GraphNode } from "@/app/_components/graph/types";
 import { getTopic, resolveTopicSlice } from "@/lib/topics";
 import { ConnectCard } from "../_components/connect-card";
+import { formatDate, StatTile } from "../_components/stat-tile";
 import { TopicGraphPreview } from "../_components/topic-graph-preview";
 
 // Public page for one topic slice: the graph itself, its numbers, and the
@@ -26,23 +27,6 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
       topic.description ??
       `A living knowledge graph about "${topic.name}" from the epistemic commons.`,
   };
-}
-
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
-}
-
-function StatTile({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="rounded-xl border border-border/60 bg-background px-4 py-3">
-      <p className="font-semibold text-xl tabular-nums">{value}</p>
-      <p className="text-[11px] text-muted-foreground">{label}</p>
-    </div>
-  );
 }
 
 export default async function TopicPage({ params }: Params) {

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { listTopics, type TopicListItem } from "@/lib/topics";
+import { formatDate } from "./_components/stat-tile";
 
 // The public gallery: every published topic slice of the commons, browsable
 // without an account. Cards echo the graph's pill vocabulary so the gallery
@@ -13,14 +14,6 @@ export const metadata: Metadata = {
   description:
     "Living knowledge graphs exported from the epistemic commons. Browse a topic, download its claim graph, or connect it to your AI assistant over MCP.",
 };
-
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
-}
 
 // Chips borrow the graph's node palette: claims wear the claim-pill blue,
 // challenges the crux red, sources the dashed evidence-ghost ring.

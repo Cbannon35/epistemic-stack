@@ -4,25 +4,16 @@ import { ensureContributor } from "@/lib/contributors";
 import {
   type DecideMergeResult,
   decideMergeRequest,
-  getMergeRequest,
   type OpenMergeResult,
   openMergeRequest,
   withdrawMergeRequest,
 } from "@/lib/merge";
 import { broadcastRoomEvent } from "@/lib/realtime/server-broadcast";
 import type { MergeChangedEvent } from "@/lib/realtime/types";
-import { createClient } from "@/lib/supabase/server";
+import { getAuthUser } from "@/lib/supabase/server";
 
 // Merge-request mutations. Every state change broadcasts `merge:changed` to
 // BOTH rooms server-side — the actor's client is only ever in one of them.
-
-async function requireUser() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  return user;
-}
 
 async function notifyBothRooms(event: MergeChangedEvent): Promise<void> {
   await Promise.all([
@@ -36,7 +27,7 @@ export async function openMergeRequestAction(input: {
   targetId: string;
   note?: string | null;
 }): Promise<OpenMergeResult> {
-  const user = await requireUser();
+  const user = await getAuthUser();
   if (!user) {
     return { error: "sign in to propose a merge" };
   }
@@ -64,7 +55,7 @@ export async function decideMergeRequestAction(input: {
   decision: "accepted" | "declined";
   decisionNote?: string | null;
 }): Promise<DecideMergeResult> {
-  const user = await requireUser();
+  const user = await getAuthUser();
   if (!user) {
     return { error: "sign in to review a merge" };
   }
@@ -75,16 +66,13 @@ export async function decideMergeRequestAction(input: {
     decisionNote: input.decisionNote,
   });
   if ("ok" in result) {
-    const mr = await getMergeRequest(input.mrId);
-    if (mr) {
-      await notifyBothRooms({
-        mrId: mr.id,
-        sourceId: mr.sourceId,
-        targetId: mr.targetId,
-        action: input.decision,
-        actorName: user.email ?? undefined,
-      });
-    }
+    await notifyBothRooms({
+      mrId: input.mrId,
+      sourceId: result.sourceId,
+      targetId: result.targetId,
+      action: input.decision,
+      actorName: user.email ?? undefined,
+    });
   }
   return result;
 }
@@ -92,7 +80,7 @@ export async function decideMergeRequestAction(input: {
 export async function withdrawMergeRequestAction(input: {
   mrId: string;
 }): Promise<DecideMergeResult> {
-  const user = await requireUser();
+  const user = await getAuthUser();
   if (!user) {
     return { error: "sign in to withdraw a merge request" };
   }
@@ -101,16 +89,13 @@ export async function withdrawMergeRequestAction(input: {
     userId: user.id,
   });
   if ("ok" in result) {
-    const mr = await getMergeRequest(input.mrId);
-    if (mr) {
-      await notifyBothRooms({
-        mrId: mr.id,
-        sourceId: mr.sourceId,
-        targetId: mr.targetId,
-        action: "withdrawn",
-        actorName: user.email ?? undefined,
-      });
-    }
+    await notifyBothRooms({
+      mrId: input.mrId,
+      sourceId: result.sourceId,
+      targetId: result.targetId,
+      action: "withdrawn",
+      actorName: user.email ?? undefined,
+    });
   }
   return result;
 }

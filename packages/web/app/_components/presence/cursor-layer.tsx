@@ -2,6 +2,7 @@
 
 import { useReactFlow, useStoreApi } from "@xyflow/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useActiveAgents } from "@/app/_components/agents/agents-bus";
 import { useAgentActivity } from "@/app/_components/agents/use-agent-activity";
 import { DelegationDock } from "@/app/_components/delegate/delegation-dock";
 import { useDelegations } from "@/app/_components/delegate/use-delegations";
@@ -11,15 +12,17 @@ import {
   type CursorRefs,
   RemoteCursor,
 } from "@/app/_components/presence/cursor";
+import { LOT_INPUT_ANCHOR } from "@/app/_components/presence/parking-lot";
 import { TourPill } from "@/app/_components/presence/tour-pill";
 import { type EveDriver, useTour } from "@/app/_components/presence/use-tour";
 import { useRoom } from "@/app/_components/room-provider";
 import { PingLayer } from "@/app/_components/weave/pings";
 import { colorForUser, DELEGATE_COLOR, EVE_COLOR } from "@/lib/realtime/color";
 import {
-  AGENT_CURSOR_PREFIX,
+  agentCursorId,
   isAgentCursorId,
   isEveCursorId,
+  isParked,
 } from "@/lib/realtime/types";
 import { throttle } from "@/lib/throttle";
 
@@ -27,12 +30,6 @@ const CURSOR_SEND_MS = 40;
 const CHAT_SEND_MS = 90;
 const BUBBLE_FADE_MS = 4000;
 const CHAT_IDLE_CLOSE_MS = 10_000;
-
-// Where the own `/` chat input anchors when the pointer is off the pane —
-// beside the parking lot (presence/parking-lot.tsx), which statically hosts
-// the cursors of off-graph members.
-const PARKED_INPUT_X = 140;
-const PARKED_INPUT_BOTTOM = 120;
 
 type Remote = {
   tx: number;
@@ -62,8 +59,6 @@ export function CursorLayer() {
   const storeApi = useStoreApi();
   const remotesRef = useRef(new Map<string, Remote>());
   const ownPosRef = useRef<{ x: number; y: number } | null>(null);
-  const meClientIdRef = useRef(me.clientId);
-  meClientIdRef.current = me.clientId;
   const pointerOverRef = useRef(false);
   const [chatOpen, setChatOpen] = useState(false);
   const [chatText, setChatText] = useState("");
@@ -135,8 +130,9 @@ export function CursorLayer() {
   delegationsRef.current = delegations;
 
   // External MCP agents too — one cursor per agent contributor, driven by
-  // server-broadcast activity events.
-  const agentActivity = useAgentActivity(eveDriver);
+  // server-broadcast activity events; cursor ids/names derive from the bus.
+  useAgentActivity(eveDriver);
+  const activeAgents = useActiveAgents();
 
   // Person-follow: camera shadows a teammate's cursor (people-bus state).
   const followTarget = useFollowCamera();
@@ -146,14 +142,23 @@ export function CursorLayer() {
   const parkedIds = useMemo(
     () =>
       new Set(
-        [...channel.peers.values()]
-          .filter((peer) => peer.view !== "graph")
-          .map((peer) => peer.clientId)
+        [...channel.peers.values()].filter(isParked).map((p) => p.clientId)
       ),
     [channel.peers]
   );
   const parkedIdsRef = useRef(parkedIds);
   parkedIdsRef.current = parkedIds;
+  const parkedSelf = parkedIds.has(me.clientId);
+  // Own self-echo to the lot (broadcasts skip self) — ONE emit helper for
+  // every protocol transition: open/keystroke drafts, commit, clear.
+  const announceSelfChat = useCallback(
+    (text: string, draft?: boolean) => {
+      if (parkedIdsRef.current.has(me.clientId)) {
+        graphBus.emit("selfCursorChat", draft ? { text, draft } : { text });
+      }
+    },
+    [me.clientId]
+  );
 
   const registerRefs = useCallback(
     (id: string, refs: Partial<CursorRefs>) => {
@@ -221,14 +226,9 @@ export function CursorLayer() {
       const state = storeApi.getState();
       const [vx, vy, zoom] = state.transform;
       const paneHeight = state.domNode?.clientHeight ?? 0;
-      for (const [id, remote] of remotesRef.current.entries()) {
+      for (const remote of remotesRef.current.values()) {
         const { el } = remote;
         if (!el) {
-          continue;
-        }
-        // Parked members render in the STATIC lot, not the flow layer.
-        if (parkedIdsRef.current.has(id)) {
-          el.style.opacity = "0";
           continue;
         }
         // A parked-in-place cursor stays visible (Figma-style) — it only
@@ -265,8 +265,8 @@ export function CursorLayer() {
         if (own) {
           wrap.style.transform = `translate3d(${own.x}px, ${own.y}px, 0)`;
         } else if (paneHeight > 0) {
-          wrap.style.transform = `translate3d(${PARKED_INPUT_X}px, ${
-            paneHeight - PARKED_INPUT_BOTTOM
+          wrap.style.transform = `translate3d(${LOT_INPUT_ANCHOR.x}px, ${
+            paneHeight - LOT_INPUT_ANCHOR.bottom
           }px, 0)`;
         }
       }
@@ -365,10 +365,10 @@ export function CursorLayer() {
         });
         // Mirror the clear locally: an abandoned draft sends the glyph back
         // to the idle row (a committed message keeps its bubble ticking).
-        graphBus.emit("selfCursorChat", { text: "" });
+        announceSelfChat("");
       }
     },
-    [send, setActivity, me.clientId]
+    [send, setActivity, me.clientId, announceSelfChat]
   );
 
   const bumpIdleTimer = useCallback(() => {
@@ -384,13 +384,7 @@ export function CursorLayer() {
   const handleChatChange = (value: string) => {
     setChatText(value);
     sendChatRef.current(value);
-    // Broadcasts skip self — while parked, echo live typing to the lot so
-    // YOUR glyph springs to the speaking slot as you type. Marked draft: the
-    // input shows your text while typing, so the glyph stays bubble-less
-    // until commit (no double rendering).
-    if (parkedIdsRef.current.has(me.clientId)) {
-      graphBus.emit("selfCursorChat", { text: value, draft: true });
-    }
+    announceSelfChat(value, true);
     bumpIdleTimer();
   };
 
@@ -442,11 +436,8 @@ export function CursorLayer() {
         done: true,
         ts: Date.now(),
       });
-      // Broadcasts skip self — while parked, the lot shows your own bubble
-      // rising from your parked glyph via the local bus.
-      if (parkedIdsRef.current.has(me.clientId)) {
-        graphBus.emit("selfCursorChat", { text });
-      }
+      // While parked, the lot shows your own bubble rising from your glyph.
+      announceSelfChat(text);
     }
     closeChat(!text);
   };
@@ -506,19 +497,15 @@ export function CursorLayer() {
 
   // Parked self: the lot's live bubble IS the visible input — the real input
   // stays mounted (it owns focus + keystrokes) but hides its chrome.
-  const parkedSelf = parkedIds.has(me.clientId);
-
   useEffect(() => {
     if (chatOpen) {
       chatInputRef.current?.focus();
       bumpIdleTimer();
       // Opening while parked: glyph takes the speaking slot immediately with
       // an empty draft bubble — that's where your words will appear.
-      if (parkedIdsRef.current.has(meClientIdRef.current)) {
-        graphBus.emit("selfCursorChat", { text: "", draft: true });
-      }
+      announceSelfChat("", true);
     }
-  }, [chatOpen, bumpIdleTimer]);
+  }, [chatOpen, bumpIdleTimer, announceSelfChat]);
 
   // The chat composer forwards `/` (when empty) here — its textarea holds
   // focus in the chat pane, so the window keybinding can't see the key.
@@ -531,8 +518,9 @@ export function CursorLayer() {
     [setActivity]
   );
 
+  // Parked members render exclusively in the static lot.
   const peers = [...channel.peers.values()].filter(
-    (p) => p.clientId !== me.clientId
+    (p) => p.clientId !== me.clientId && !parkedIds.has(p.clientId)
   );
 
   return (
@@ -564,15 +552,12 @@ export function CursorLayer() {
           register={registerRefs}
         />
       ))}
-      {agentActivity.cursors.map((id) => (
+      {activeAgents.map((agent) => (
         <RemoteCursor
-          color={colorForUser(id.slice(AGENT_CURSOR_PREFIX.length))}
-          displayName={
-            agentActivity.names.get(id.slice(AGENT_CURSOR_PREFIX.length)) ??
-            "agent"
-          }
-          id={id}
-          key={id}
+          color={colorForUser(agent.contributorId)}
+          displayName={agent.name}
+          id={agentCursorId(agent.contributorId)}
+          key={agent.contributorId}
           register={registerRefs}
         />
       ))}

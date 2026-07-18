@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { buildGraphData } from "@/lib/graph-data";
-import { getMergeRequest, previewHops } from "@/lib/merge";
+import { getMergeRequest, mergePreviewScope } from "@/lib/merge";
 
 // Thin wrapper — the graph read model lives in lib/graph-data.ts, shared with
 // the tour generator. `mergePreview=<mrId>` widens the scope by the source's
@@ -12,9 +12,9 @@ export async function GET(request: Request) {
   if (investigation && mergePreview) {
     const mr = await getMergeRequest(mergePreview);
     if (mr && mr.targetId === investigation && mr.status === "open") {
-      const extraHops = await previewHops(mr.sourceId, mr.targetId);
+      const hopsOverride = await mergePreviewScope(mr.sourceId, mr.targetId);
       return NextResponse.json(
-        await buildGraphData(investigation, { extraHops })
+        await buildGraphData(investigation, { hopsOverride })
       );
     }
   }

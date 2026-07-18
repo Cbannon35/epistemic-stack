@@ -207,6 +207,36 @@ export function minCutoff(a: number | null, b: number | null): number | null {
   return Math.min(a, b);
 }
 
+/** The mirror bound: unbounded wins; otherwise the later moment. */
+export function maxCutoff(a: number | null, b: number | null): number | null {
+  if (a == null || b == null) {
+    return null;
+  }
+  return Math.max(a, b);
+}
+
+/** Hops → the read-scope map (sessionId → cutoff). The whole ScopeHop
+ * algebra in one place: asOf min-composes into every hop FIRST (tightest),
+ * then a session appearing in multiple hops keeps its LOOSEST bound — e.g.
+ * a fork's own session stays unbounded as the leaf even though the copy
+ * adopted through a merge into its parent is frozen at the accept moment. */
+export function resolveScope(
+  hops: readonly ScopeHop[],
+  asOf: number | null
+): Map<string, number | null> {
+  const scope = new Map<string, number | null>();
+  for (const hop of hops) {
+    const cutoff = minCutoff(hop.cutoff, asOf);
+    for (const id of hop.sessionIds) {
+      scope.set(
+        id,
+        scope.has(id) ? maxCutoff(scope.get(id) ?? null, cutoff) : cutoff
+      );
+    }
+  }
+  return scope;
+}
+
 /** Parse materialized hops back out of jsonb, dropping malformed entries. */
 export function parseScopeHops(value: unknown): ScopeHop[] {
   if (!Array.isArray(value)) {

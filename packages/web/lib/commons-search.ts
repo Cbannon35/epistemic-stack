@@ -1,7 +1,11 @@
 import "server-only";
 import { createDb } from "@epistack/db";
 import { sql } from "drizzle-orm";
-import { hopSessionIds, type LineageHop } from "@/lib/investigations";
+import {
+  getAncestorChain,
+  hopSessionIds,
+  type LineageHop,
+} from "@/lib/investigations";
 
 // Cross-investigation retrieval — the compounding read path. Full-text search
 // (not vectors): only claims carry embeddings, and embedding a query would pull
@@ -200,4 +204,26 @@ export function formatCommonsDigest(hits: CommonsHit[]): string | null {
     return null;
   }
   return `${header}\n${lines.join("\n")}`;
+}
+
+// One seed recipe for every sender — the browser composer and the agent MCP
+// send path call THIS, so their commons seeding can't drift.
+export async function buildCommonsSeed(
+  query: string,
+  excludeSessionId: string | null
+): Promise<string | null> {
+  if (!query.trim()) {
+    return null;
+  }
+  const excludeLineage = excludeSessionId
+    ? await getAncestorChain(excludeSessionId)
+    : [];
+  const hits = await searchCommons({
+    query,
+    mode: "or",
+    kinds: ["claim", "hypothesis"],
+    excludeLineage,
+    limit: 8,
+  });
+  return formatCommonsDigest(hits);
 }

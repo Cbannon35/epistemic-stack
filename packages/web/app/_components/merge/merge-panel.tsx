@@ -15,6 +15,7 @@ import {
   withdrawMergeRequestAction,
 } from "@/app/(chat)/merge-actions";
 import type { MergeDiffCounts, MergeRequestRecord } from "@/lib/merge-types";
+import { timeAgo } from "@/lib/utils";
 
 // Review surface for merge requests: what a fork proposes to bring into this
 // room's scope. The diff is pure addition (append-only graphs have no
@@ -50,20 +51,6 @@ const STATUS_TONE: Record<string, string> = {
   declined: "text-muted-foreground",
   withdrawn: "text-muted-foreground",
 };
-
-function timeAgo(iso: string): string {
-  const seconds = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
-  if (seconds < 60) {
-    return "now";
-  }
-  if (seconds < 3600) {
-    return `${Math.floor(seconds / 60)}m ago`;
-  }
-  if (seconds < 86_400) {
-    return `${Math.floor(seconds / 3600)}h ago`;
-  }
-  return `${Math.floor(seconds / 86_400)}d ago`;
-}
 
 function IncomingNodeRow({
   node,
@@ -153,6 +140,11 @@ function MergeRequestCard({
   const previewing = previewMrId === mr.id;
 
   useEffect(() => {
+    // Only open requests render a diff — don't burn two full graph builds
+    // per HISTORY card for a response nobody shows.
+    if (mr.status !== "open") {
+      return;
+    }
     let cancelled = false;
     fetch(`/api/merge/diff?mr=${encodeURIComponent(mr.id)}`)
       .then((r) => (r.ok ? r.json() : null))
@@ -165,7 +157,7 @@ function MergeRequestCard({
     return () => {
       cancelled = true;
     };
-  }, [mr.id]);
+  }, [mr.id, mr.status]);
 
   const act = useCallback(
     (run: () => Promise<{ ok?: true; error?: string }>) => {
@@ -321,6 +313,18 @@ export function MergePanel({
 }) {
   const open = mergeRequests.filter((m) => m.status === "open");
   const decided = mergeRequests.filter((m) => m.status !== "open");
+  const renderCard = (mr: MergeRequestRecord) => (
+    <MergeRequestCard
+      investigation={investigation}
+      isOwner={isOwner}
+      key={mr.id}
+      meId={meId}
+      mr={mr}
+      onChanged={onChanged}
+      onPreview={onPreview}
+      previewMrId={previewMrId}
+    />
+  );
   return (
     <div className="panel-in-right absolute top-0 right-0 bottom-0 z-20 flex w-[26rem] max-w-[90%] flex-col border-border/60 border-l bg-background/95 backdrop-blur">
       <div className="flex items-center justify-between border-border/40 border-b px-4 py-3">
@@ -347,35 +351,13 @@ export function MergePanel({
             lineage from the graph toolbar.
           </p>
         ) : null}
-        {open.map((mr) => (
-          <MergeRequestCard
-            investigation={investigation}
-            isOwner={isOwner}
-            key={mr.id}
-            meId={meId}
-            mr={mr}
-            onChanged={onChanged}
-            onPreview={onPreview}
-            previewMrId={previewMrId}
-          />
-        ))}
+        {open.map(renderCard)}
         {decided.length > 0 ? (
           <p className="px-1 pt-1 text-[10px] text-muted-foreground uppercase">
             history
           </p>
         ) : null}
-        {decided.map((mr) => (
-          <MergeRequestCard
-            investigation={investigation}
-            isOwner={isOwner}
-            key={mr.id}
-            meId={meId}
-            mr={mr}
-            onChanged={onChanged}
-            onPreview={onPreview}
-            previewMrId={previewMrId}
-          />
-        ))}
+        {decided.map(renderCard)}
       </div>
     </div>
   );

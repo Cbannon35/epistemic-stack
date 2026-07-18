@@ -15,11 +15,11 @@ export type ChallengeType =
   | "rival_interpretation"
   | "methodological_objection";
 
-export const CHALLENGE_TYPES: readonly ChallengeType[] = [
+export const CHALLENGE_TYPES = [
   "counter_evidence",
   "rival_interpretation",
   "methodological_objection",
-];
+] as const satisfies readonly ChallengeType[];
 
 export const CHALLENGE_TYPE_LABELS: Record<ChallengeType, string> = {
   counter_evidence: "counter-evidence",

@@ -2,6 +2,7 @@ import { DownloadIcon, TagIcon } from "lucide-react";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import type { GraphEdge, GraphNode } from "@/app/_components/graph/types";
+import { formatDate, StatTile } from "@/app/topics/_components/stat-tile";
 import { TopicGraphPreview } from "@/app/topics/_components/topic-graph-preview";
 import { getRelease, releaseGraph } from "@/lib/releases";
 import { CitationCard } from "./citation-card";
@@ -26,29 +27,13 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
   };
 }
 
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
-}
-
-function StatTile({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="rounded-xl border border-border/60 bg-background px-4 py-3">
-      <p className="font-semibold text-xl tabular-nums">{value}</p>
-      <p className="text-[11px] text-muted-foreground">{label}</p>
-    </div>
-  );
-}
-
 export default async function ReleasePage({ params }: Params) {
   const { id } = await params;
   const release = await getRelease(id);
   if (!release) {
     notFound();
   }
+  const { hops: _hops, ...record } = release;
   const graph = await releaseGraph(release);
   const contributorCount = new Set(
     Object.values(graph.provenance).map((p) => p.contributorId)
@@ -117,20 +102,7 @@ export default async function ReleasePage({ params }: Params) {
       ) : null}
 
       <div className="mt-6 grid gap-4 md:grid-cols-[1fr_auto]">
-        <CitationCard
-          release={{
-            id: release.id,
-            investigationId: release.investigationId,
-            title: release.title,
-            version: release.version,
-            name: release.name,
-            notes: release.notes,
-            cutoff: release.cutoff,
-            createdBy: release.createdBy,
-            creatorName: release.creatorName,
-            createdAt: release.createdAt,
-          }}
-        />
+        <CitationCard release={record} />
         <a
           className="flex h-fit items-center gap-2 rounded-xl border border-border/60 bg-background px-4 py-3 text-sm shadow-[var(--shadow-card)] transition-[border-color,box-shadow] duration-150 hover:border-border hover:shadow-[var(--shadow-float)]"
           download

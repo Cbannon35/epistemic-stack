@@ -265,6 +265,20 @@ export function GraphPanel({
     setPositions(layout(d));
   }, []);
 
+  // Every preview change flows through here: ref first (load reads it), then
+  // state (styling), then one refetch — no trigger effect needed.
+  const previewMerge = useCallback(
+    (preview: { mrId: string; ids: string[] } | null) => {
+      if (mergePreviewRef.current === preview) {
+        return;
+      }
+      mergePreviewRef.current = preview;
+      setMergePreview(preview);
+      load(true);
+    },
+    [load]
+  );
+
   // Reload when the scope (investigation / commons) changes, plus a slow fallback poll.
   // biome-ignore lint/correctness/useExhaustiveDependencies: load reads the scope via refs; the effect must re-run when it changes
   useEffect(() => {
@@ -325,6 +339,7 @@ export function GraphPanel({
   }, []);
   // biome-ignore lint/correctness/useExhaustiveDependencies: loadMerges reads the scope via a ref; the effect must re-run when it changes
   useEffect(() => {
+    mergePreviewRef.current = null;
     setMergePreview(null);
     setShowMerges(false);
     loadMerges();
@@ -338,12 +353,6 @@ export function GraphPanel({
       }),
     [channelOn, loadMerges, load]
   );
-  // Preview toggles refetch the graph with/without the widened scope.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: mergePreview is read via a ref inside load; this effect is its refetch trigger
-  useEffect(() => {
-    load(true);
-  }, [load, mergePreview]);
-
   const openMergeCount = mergeRequests.filter(
     (m) => m.status === "open"
   ).length;
@@ -992,9 +1001,9 @@ export function GraphPanel({
           }}
           onClose={() => {
             setShowMerges(false);
-            setMergePreview(null);
+            previewMerge(null);
           }}
-          onPreview={setMergePreview}
+          onPreview={previewMerge}
           previewMrId={mergePreview?.mrId ?? null}
         />
       ) : null}

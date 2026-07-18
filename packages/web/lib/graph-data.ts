@@ -7,7 +7,11 @@ import {
   listCredences,
   summarizeCredences,
 } from "@/lib/credences";
-import { getScopeHops, minCutoff, type ScopeHop } from "@/lib/investigations";
+import {
+  getScopeHops,
+  resolveScope,
+  type ScopeHop,
+} from "@/lib/investigations";
 
 // Read the commons as a graph (nodes + edges + per-node detail). With an
 // investigation id, scope to what that investigation — and its fork ancestors —
@@ -110,29 +114,7 @@ export async function buildGraphData(
   } else if (investigation) {
     hops = [...(await getScopeHops(investigation)), ...(opts.extraHops ?? [])];
   }
-  const scope = hops ? new Map<string, number | null>() : null;
-  if (hops && scope) {
-    for (const hop of hops) {
-      // asOf composes in FIRST (tightest), then a session id appearing in
-      // multiple hops keeps its LOOSEST bound — e.g. a fork's own session is
-      // unbounded as the leaf even though the copy adopted through a merge
-      // into its parent is frozen at the accept moment.
-      const cutoff = minCutoff(hop.cutoff, asOf);
-      for (const id of hop.sessionIds) {
-        const existing = scope.get(id);
-        if (scope.has(id)) {
-          scope.set(
-            id,
-            existing == null || cutoff == null
-              ? null
-              : Math.max(existing, cutoff)
-          );
-        } else {
-          scope.set(id, cutoff);
-        }
-      }
-    }
-  }
+  const scope = hops ? resolveScope(hops, asOf) : null;
 
   const [
     claims,

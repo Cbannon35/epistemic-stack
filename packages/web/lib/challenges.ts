@@ -1,5 +1,4 @@
 import "server-only";
-import { createHash } from "node:crypto";
 import { createDb, schema } from "@epistack/db";
 import { and, asc, eq, inArray, isNull, lte } from "drizzle-orm";
 import type {
@@ -11,6 +10,7 @@ import type {
   NodeReceipts,
   ReceiptRecord,
 } from "@/lib/challenge-types";
+import { contentHash } from "@/lib/content-hash";
 
 // Challenges + receipts over the commons. Challenges are `assessments` with
 // kind = 'challenge' — the schema reserved this — so every dispute carries a
@@ -19,9 +19,6 @@ import type {
 // contested/answered state is derived at read time.
 
 const db = createDb();
-
-const contentHash = (text: string): string =>
-  createHash("sha256").update(text).digest("hex").slice(0, 32);
 
 async function recordUserContribution(input: {
   contributorId: string;

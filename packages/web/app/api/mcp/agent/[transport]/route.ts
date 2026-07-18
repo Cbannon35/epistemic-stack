@@ -26,11 +26,12 @@ const handler = async (req: Request) => {
     );
   }
   const origin = new URL(req.url).origin;
+  const scope = { origin, agent };
   return createMcpHandler(
     (server) => {
       registerCommonsTools(server, { origin, topic: null, memberIds: null });
-      registerAgentTools(server, { origin, agent });
-      registerAgentCollabTools(server, { origin, agent });
+      registerAgentTools(server, scope);
+      registerAgentCollabTools(server, scope);
     },
     {},
     { basePath: "/api/mcp/agent", maxDuration: 60 }

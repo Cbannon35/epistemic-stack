@@ -1,7 +1,8 @@
 "use client";
 
-import { CheckIcon, CopyIcon, ExternalLinkIcon, TagIcon } from "lucide-react";
+import { ExternalLinkIcon, TagIcon } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
+import { CopyChip, useOrigin } from "@/app/_components/ui/copy-chip";
 import { cutReleaseAction } from "@/app/(chat)/release-actions";
 import { Button } from "@/components/ui/button";
 import {
@@ -20,39 +21,8 @@ import { citationFor, type ReleaseRecord } from "@/lib/release-types";
 // The version list doubles as the room's release history; each row hands out
 // the public permalink and a ready-to-paste citation.
 
-function CopyChip({ text, label }: { text: string; label?: string }) {
-  const [copied, setCopied] = useState(false);
-  useEffect(() => {
-    if (!copied) {
-      return;
-    }
-    const t = setTimeout(() => setCopied(false), 1600);
-    return () => clearTimeout(t);
-  }, [copied]);
-  return (
-    <button
-      aria-label={label ?? "Copy"}
-      className="flex shrink-0 items-center gap-1 rounded-md border border-border/60 px-2 py-1 text-muted-foreground text-xs transition-colors duration-150 hover:bg-muted hover:text-foreground"
-      onClick={() => {
-        navigator.clipboard.writeText(text).then(() => setCopied(true));
-      }}
-      type="button"
-    >
-      {copied ? (
-        <CheckIcon className="size-3" />
-      ) : (
-        <CopyIcon className="size-3" />
-      )}
-      {copied ? "Copied" : (label ?? "Copy")}
-    </button>
-  );
-}
-
 function ReleaseRow({ release }: { release: ReleaseRecord }) {
-  const [origin, setOrigin] = useState("");
-  useEffect(() => {
-    setOrigin(window.location.origin);
-  }, []);
+  const origin = useOrigin();
   const url = `${origin}/releases/${release.id}`;
   return (
     <div className="rounded-lg border border-border/50 px-2.5 py-2">

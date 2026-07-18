@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { graphBus } from "@/app/_components/graph/graph-bus";
 import { CursorGlyph } from "@/app/_components/presence/cursor";
 import { useRoom } from "@/app/_components/room-provider";
-import type { PresenceMeta } from "@/lib/realtime/types";
+import { isParked, type PresenceMeta } from "@/lib/realtime/types";
 
 // The cursor parking lot — static UI anchored to the legend, deliberately
 // outside the flow's coordinate space so pan/zoom never touches it.
@@ -22,6 +22,10 @@ import type { PresenceMeta } from "@/lib/realtime/types";
 
 const LEGEND_W = 132;
 const LEGEND_H = 138;
+
+/** Where the `/` chat input anchors while parked — beside the lot's speaking
+ * slot, derived from the same geometry so moving the lot moves the input. */
+export const LOT_INPUT_ANCHOR = { x: LEGEND_W + 8, bottom: LEGEND_H - 18 };
 const ROW_SPACING = 20;
 const FEED_SPACING = 36;
 const FEED_MAX = 4;
@@ -49,10 +53,10 @@ export function ParkingLot() {
       }
     }
     const others = [...byUser.values()].filter(
-      (meta) => meta.view !== "graph" && meta.userId !== me.userId
+      (meta) => isParked(meta) && meta.userId !== me.userId
     );
     const own = channel.peers.get(me.clientId);
-    const lineup = own && own.view !== "graph" ? [own, ...others] : others;
+    const lineup = own && isParked(own) ? [own, ...others] : others;
     return lineup.sort(
       (a, b) => a.joinedAt - b.joinedAt || a.userId.localeCompare(b.userId)
     );
@@ -61,12 +65,12 @@ export function ParkingLot() {
   // The feed: oldest→newest committed/live messages, one entry per person.
   const [speech, setSpeech] = useState<readonly Speech[]>([]);
 
-  const speak = (userId: string, text: string, draft?: boolean) => {
+  const speak = useCallback((userId: string, text: string, draft?: boolean) => {
     setSpeech((prev) => [
       ...prev.filter((s) => s.userId !== userId),
       { userId, text, ts: Date.now(), draft },
     ]);
-  };
+  }, []);
 
   const { on, peers } = channel;
   useEffect(
@@ -82,7 +86,7 @@ export function ParkingLot() {
         }
         speak(userId, p.text);
       }),
-    [on, peers]
+    [on, peers, speak]
   );
   // Own messages arrive via the local bus — broadcasts skip self. Live
   // keystrokes speak too (glyph springs over as you type); an empty clear
@@ -99,7 +103,7 @@ export function ParkingLot() {
           speak(me.userId, text, draft);
         }
       }),
-    [me.userId]
+    [me.userId, speak]
   );
   useEffect(() => {
     const sweep = setInterval(() => {

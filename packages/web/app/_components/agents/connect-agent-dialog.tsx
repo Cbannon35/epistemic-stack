@@ -1,7 +1,8 @@
 "use client";
 
-import { BotIcon, CheckIcon, CopyIcon } from "lucide-react";
+import { BotIcon } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
+import { CopyChip, useOrigin } from "@/app/_components/ui/copy-chip";
 import {
   listAgentKeysAction,
   mintAgentKeyAction,
@@ -23,39 +24,8 @@ import type { AgentKeyListItem } from "@/lib/agent-keys";
 // multiplayer contributors over MCP — reading, writing, believing, and
 // disputing under their own identity. The token shows exactly once.
 
-function CopyChip({ text }: { text: string }) {
-  const [copied, setCopied] = useState(false);
-  useEffect(() => {
-    if (!copied) {
-      return;
-    }
-    const t = setTimeout(() => setCopied(false), 1600);
-    return () => clearTimeout(t);
-  }, [copied]);
-  return (
-    <button
-      aria-label="Copy"
-      className="flex shrink-0 items-center gap-1 rounded-md border border-border/60 px-2 py-1 text-muted-foreground text-xs transition-colors duration-150 hover:bg-muted hover:text-foreground"
-      onClick={() => {
-        navigator.clipboard.writeText(text).then(() => setCopied(true));
-      }}
-      type="button"
-    >
-      {copied ? (
-        <CheckIcon className="size-3" />
-      ) : (
-        <CopyIcon className="size-3" />
-      )}
-      {copied ? "Copied" : "Copy"}
-    </button>
-  );
-}
-
 function MintedPane({ token, name }: { token: string; name: string }) {
-  const [origin, setOrigin] = useState("");
-  useEffect(() => {
-    setOrigin(window.location.origin);
-  }, []);
+  const origin = useOrigin();
   const mcpUrl = `${origin}/api/mcp/agent/mcp`;
   const config = JSON.stringify(
     {

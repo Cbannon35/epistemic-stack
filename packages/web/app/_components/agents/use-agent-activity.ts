@@ -1,7 +1,7 @@
 "use client";
 
 import { useReactFlow } from "@xyflow/react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import {
   type ActiveAgent,
   agentsBus,
@@ -23,25 +23,20 @@ const SWEEP_MS = 5000;
 // just-written node may not exist yet — retry the position resolve.
 const RESOLVE_RETRIES = [400, 1200, 2600];
 
-export function useAgentActivity(eve: EveDriver): {
-  cursors: string[];
-  /** contributorId → agent display name, for cursor labels. */
-  names: ReadonlyMap<string, string>;
-} {
+// Drives agent cursors + the agents-bus (the ONE store consumers read via
+// useActiveAgents; cursor ids/names are derived from it, not mirrored).
+export function useAgentActivity(eve: EveDriver): void {
   const { channel } = useRoom();
   const rf = useReactFlow();
   const agentsRef = useRef(new Map<string, ActiveAgent>());
-  const [cursors, setCursors] = useState<string[]>([]);
-  const [names, setNames] = useState<ReadonlyMap<string, string>>(new Map());
   const timersRef = useRef(new Set<ReturnType<typeof setTimeout>>());
 
   const publish = useCallback(() => {
-    const list = [...agentsRef.current.values()].sort(
-      (a, b) => a.contributorId.localeCompare(b.contributorId) // stable order
+    agentsBus.set(
+      [...agentsRef.current.values()].sort(
+        (a, b) => a.contributorId.localeCompare(b.contributorId) // stable order
+      )
     );
-    agentsBus.set(list);
-    setCursors(list.map((a) => agentCursorId(a.contributorId)));
-    setNames(new Map(list.map((a) => [a.contributorId, a.name])));
   }, []);
 
   const nodeCenter = useCallback(
@@ -61,7 +56,6 @@ export function useAgentActivity(eve: EveDriver): {
   useEffect(
     () =>
       channel.on("agent-activity", (p) => {
-        const known = agentsRef.current.has(p.contributorId);
         agentsRef.current.set(p.contributorId, {
           contributorId: p.contributorId,
           name: p.name,
@@ -136,6 +130,4 @@ export function useAgentActivity(eve: EveDriver): {
       agentsBus.set([]);
     };
   }, [eve]);
-
-  return { cursors, names };
 }

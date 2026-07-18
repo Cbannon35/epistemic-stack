@@ -8,20 +8,12 @@ import {
   revokeAgentKey,
 } from "@/lib/agent-keys";
 import { ensureContributor } from "@/lib/contributors";
-import { createClient } from "@/lib/supabase/server";
-
-async function requireUser() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  return user;
-}
+import { getAuthUser } from "@/lib/supabase/server";
 
 export async function mintAgentKeyAction(input: {
   name: string;
 }): Promise<MintedAgentKey | { error: string }> {
-  const user = await requireUser();
+  const user = await getAuthUser();
   if (!user) {
     return { error: "sign in to connect an agent" };
   }
@@ -30,7 +22,7 @@ export async function mintAgentKeyAction(input: {
 }
 
 export async function listAgentKeysAction(): Promise<AgentKeyListItem[]> {
-  const user = await requireUser();
+  const user = await getAuthUser();
   if (!user) {
     return [];
   }
@@ -40,7 +32,7 @@ export async function listAgentKeysAction(): Promise<AgentKeyListItem[]> {
 export async function revokeAgentKeyAction(input: {
   id: string;
 }): Promise<{ ok: boolean }> {
-  const user = await requireUser();
+  const user = await getAuthUser();
   if (!user) {
     return { ok: false };
   }
