@@ -504,10 +504,19 @@ export function CursorLayer() {
     };
   }, [following, storeApi]);
 
+  // Parked self: the lot's live bubble IS the visible input — the real input
+  // stays mounted (it owns focus + keystrokes) but hides its chrome.
+  const parkedSelf = parkedIds.has(me.clientId);
+
   useEffect(() => {
     if (chatOpen) {
       chatInputRef.current?.focus();
       bumpIdleTimer();
+      // Opening while parked: glyph takes the speaking slot immediately with
+      // an empty draft bubble — that's where your words will appear.
+      if (parkedIdsRef.current.has(meClientIdRef.current)) {
+        graphBus.emit("selfCursorChat", { text: "", draft: true });
+      }
     }
   }, [chatOpen, bumpIdleTimer]);
 
@@ -578,7 +587,9 @@ export function CursorLayer() {
       />
       {chatOpen ? (
         <div
-          className="absolute top-0 left-0 will-change-transform"
+          className={`absolute top-0 left-0 will-change-transform ${
+            parkedSelf ? "opacity-0" : ""
+          }`}
           ref={chatWrapRef}
         >
           <div className="pointer-events-auto mt-4 ml-4">

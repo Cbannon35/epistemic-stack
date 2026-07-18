@@ -90,7 +90,10 @@ export function ParkingLot() {
   useEffect(
     () =>
       graphBus.on("selfCursorChat", ({ text, draft }) => {
-        if (text === "") {
+        // A non-draft empty text is the clear signal (Escape/abandon); an
+        // empty DRAFT is a just-opened input — the glyph takes the speaking
+        // slot with an empty bubble, ready for words.
+        if (text === "" && !draft) {
           setSpeech((prev) => prev.filter((s) => s.userId !== me.userId));
         } else {
           speak(me.userId, text, draft);
@@ -147,12 +150,20 @@ export function ParkingLot() {
             } · in the chat`}
           >
             <CursorGlyph color={peer.color} />
-            {speaking && message && !message.draft ? (
+            {speaking && message ? (
               <div
                 className="fade-in max-w-56 truncate whitespace-pre rounded-lg rounded-bl-sm border bg-background/95 px-2 py-1 text-foreground text-xs shadow-[var(--shadow-float)] backdrop-blur"
                 style={{ borderColor: peer.color }}
               >
-                {message.text}
+                {message.text ||
+                  (message.draft ? (
+                    <span className="text-muted-foreground italic">
+                      say something…
+                    </span>
+                  ) : null)}
+                {message.draft ? (
+                  <span className="animate-pulse text-muted-foreground">▍</span>
+                ) : null}
               </div>
             ) : null}
           </div>
