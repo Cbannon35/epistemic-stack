@@ -5,6 +5,7 @@ import { and, desc, eq } from "drizzle-orm";
 import { z } from "zod";
 import {
   addSource,
+  foldForMatch,
   linkClaimToHypothesis,
   recordClaim,
   recordCrux,
@@ -379,10 +380,6 @@ function clip(text: string, n = 90): string {
   return text.length > n ? `${text.slice(0, n)}…` : text;
 }
 
-function normalizeWs(text: string): string {
-  return text.replace(/\s+/g, " ").trim();
-}
-
 async function synthesizePhase(
   row: {
     id: string;
@@ -452,20 +449,27 @@ async function synthesizePhase(
   };
   // Source rows are content-addressed — record each used finding once.
   const sourceIdByFinding = new Map<number, string>();
-  // Null-padded on every skip so new:<i> placeholders stay aligned to claims[i].
-  const newClaimIds: (string | null)[] = [];
+  const foldedSnippetByFinding = new Map<number, string>();
+  // Keyed by the candidate's index in object.claims, so new:<i> placeholders
+  // resolve correctly no matter which candidates were skipped.
+  const newClaimIds = new Map<number, string>();
 
-  for (const candidate of object.claims) {
+  for (const [index, candidate] of object.claims.entries()) {
     const finding = state.findings[candidate.findingIndex];
     if (!finding) {
-      newClaimIds.push(null);
       continue; // No receipt, no claim.
     }
     // The verbatim rule is enforced, not trusted — a quote that isn't actually
-    // in the finding's snippet would persist as a fake receipt.
-    const quote = normalizeWs(candidate.quote);
-    if (!quote || !normalizeWs(finding.snippet).includes(quote)) {
-      newClaimIds.push(null);
+    // in the finding's snippet would persist as a fake receipt. (recordClaim
+    // re-checks against the stored source text; checking here first avoids
+    // creating a source row for a claim that will be dropped.)
+    let foldedSnippet = foldedSnippetByFinding.get(candidate.findingIndex);
+    if (foldedSnippet === undefined) {
+      foldedSnippet = foldForMatch(finding.snippet);
+      foldedSnippetByFinding.set(candidate.findingIndex, foldedSnippet);
+    }
+    const quote = foldForMatch(candidate.quote);
+    if (!(quote && foldedSnippet.includes(quote))) {
       beats.push({
         kind: "record",
         nodeId: null,
@@ -488,19 +492,23 @@ async function synthesizePhase(
         sessionId: row.sessionId,
       });
       sourceIdByFinding.set(candidate.findingIndex, sourceId);
-      output.sources.push(sourceId);
     }
     const result = await recordClaim({
       text: candidate.text,
       sourceId,
       quote: candidate.quote,
       sessionId: row.sessionId,
+      // Just created above from this very snippet, quote checked against it.
+      sourceVerified: true,
     });
-    if ("error" in result) {
-      newClaimIds.push(null);
+    if (!result.ok) {
       continue;
     }
-    newClaimIds.push(result.canonicalId);
+    // Report the source only once a claim actually landed on it.
+    if (!output.sources.includes(sourceId)) {
+      output.sources.push(sourceId);
+    }
+    newClaimIds.set(index, result.canonicalId);
     output.claims.push(result.canonicalId);
     beats.push({
       kind: "record",
@@ -516,7 +524,7 @@ async function synthesizePhase(
   const resolveClaimId = (id: string): string | null => {
     const match = id.match(/^new:(\d+)$/);
     if (match) {
-      return newClaimIds[Number(match[1])] ?? null;
+      return newClaimIds.get(Number(match[1])) ?? null;
     }
     return claimIds.has(id) ? id : null;
   };

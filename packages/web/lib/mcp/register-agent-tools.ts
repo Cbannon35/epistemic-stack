@@ -15,7 +15,11 @@ import {
   recordRelation,
 } from "@/agent/lib/commons";
 import { CHALLENGE_TYPES } from "@/lib/challenge-types";
-import { fileChallenge, resolveNodeTarget } from "@/lib/challenges";
+import {
+  fileChallenge,
+  normalizeEvidenceUrl,
+  resolveNodeTarget,
+} from "@/lib/challenges";
 import { recordCredence } from "@/lib/credences";
 import { buildGraphData } from "@/lib/graph-data";
 import {
@@ -211,7 +215,7 @@ function registerWriteTools(server: McpServer, scope: AgentScope): void {
         sessionId: investigation_id,
         contributorId: me,
       });
-      if ("error" in result) {
+      if (!result.ok) {
         return asText({ error: result.error });
       }
       announce(
@@ -443,9 +447,11 @@ function registerWriteTools(server: McpServer, scope: AgentScope): void {
         challenge_type: z.enum(CHALLENGE_TYPES),
         body: z.string().min(3),
         evidence_url: z
-          .url({ protocol: /^https?$/ })
+          .string()
           .optional()
-          .describe("http(s) URL backing the challenge"),
+          .describe(
+            "URL or doi:… backing the challenge (optional; validated server-side)"
+          ),
       },
     },
     async ({
@@ -465,12 +471,16 @@ function registerWriteTools(server: McpServer, scope: AgentScope): void {
           error: `no challengeable node "${node_id}" (cruxes cannot be disputed)`,
         });
       }
+      const evidence = normalizeEvidenceUrl(evidence_url);
+      if (evidence.error) {
+        return asText({ error: evidence.error });
+      }
       const challengeId = await fileChallenge({
         contributorId: me,
         target,
         challengeType: challenge_type,
         body,
-        evidenceUrl: evidence_url,
+        evidenceUrl: evidence.url,
         sessionId: investigation_id,
       });
       announce(

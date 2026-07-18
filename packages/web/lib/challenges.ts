@@ -77,9 +77,14 @@ export async function resolveNodeTarget(
   return source ? { kind: "source", id: nodeId } : null;
 }
 
-// The floor for challenge evidence: a well-formed http(s) URL. Nothing fetches
-// or verifies the target — that stays a read-time concern — but a string that
-// can't even parse as a URL must not render as backing.
+// The floor for challenge evidence: something that resolves to an http(s)
+// URL. doi: identifiers canonicalize to https://doi.org/…, and schemeless
+// host-ish strings get https:// prefixed (address-bar behavior). The stored
+// value is the parsed canonical href — WHATWG shorthands like
+// "http:example.com" don't survive verbatim. Nothing fetches the target;
+// that stays a read-time concern — but a string that can't resolve to a URL
+// must not render as backing. This is the single truth every entry point
+// (server actions, MCP tools, lib writes) validates through.
 export function normalizeEvidenceUrl(raw: string | null | undefined): {
   url: string | null;
   error?: string;
@@ -88,15 +93,28 @@ export function normalizeEvidenceUrl(raw: string | null | undefined): {
   if (!trimmed) {
     return { url: null };
   }
+  const doi = trimmed.match(/^doi:\s*(\S+)$/i);
+  let candidate = trimmed;
+  if (doi) {
+    candidate = `https://doi.org/${doi[1]}`;
+  } else if (!/^[a-z][a-z0-9+.-]*:/i.test(trimmed)) {
+    candidate = `https://${trimmed}`;
+  }
   try {
-    const parsed = new URL(trimmed);
-    if (parsed.protocol === "http:" || parsed.protocol === "https:") {
-      return { url: trimmed };
+    const parsed = new URL(candidate);
+    if (
+      (parsed.protocol === "http:" || parsed.protocol === "https:") &&
+      parsed.hostname.includes(".")
+    ) {
+      return { url: parsed.href };
     }
   } catch {
     // fall through to the error below
   }
-  return { url: null, error: "evidence link must be a valid http(s) URL" };
+  return {
+    url: null,
+    error: "evidence link must be a valid http(s) URL or doi:…",
+  };
 }
 
 export async function fileChallenge(input: {
@@ -108,6 +126,12 @@ export async function fileChallenge(input: {
   sessionId?: string | null;
   method?: string;
 }): Promise<string> {
+  // Boundaries pre-validate for friendly errors; this backstop refuses loudly
+  // rather than silently nulling a caller's evidence.
+  const evidence = normalizeEvidenceUrl(input.evidenceUrl);
+  if (evidence.error) {
+    throw new Error(evidence.error);
+  }
   const contributionId = await recordUserContribution({
     contributorId: input.contributorId,
     method: input.method ?? "challenge@1",
@@ -121,7 +145,7 @@ export async function fileChallenge(input: {
       kind: "challenge",
       ...targetColumns(input.target),
       challengeType: input.challengeType,
-      evidenceUrl: normalizeEvidenceUrl(input.evidenceUrl).url,
+      evidenceUrl: evidence.url,
       rationale: input.body,
       method: input.method ?? "challenge@1",
       contributionId,
@@ -150,6 +174,10 @@ export async function respondToChallenge(input: {
   if (challenge?.kind !== "challenge" || challenge.respondsTo !== null) {
     return null;
   }
+  const evidence = normalizeEvidenceUrl(input.evidenceUrl);
+  if (evidence.error) {
+    throw new Error(evidence.error);
+  }
   const contributionId = await recordUserContribution({
     contributorId: input.contributorId,
     method: "challenge_response@1",
@@ -165,7 +193,7 @@ export async function respondToChallenge(input: {
       sourceId: challenge.sourceId,
       hypothesisId: challenge.hypothesisId,
       relationId: challenge.relationId,
-      evidenceUrl: normalizeEvidenceUrl(input.evidenceUrl).url,
+      evidenceUrl: evidence.url,
       respondsTo: input.challengeId,
       rationale: input.body,
       method: "challenge_response@1",

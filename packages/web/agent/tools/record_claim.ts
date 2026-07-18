@@ -42,10 +42,11 @@ export default defineTool({
       sessionId: ctx?.session?.id,
       turnId: ctx?.session?.turn?.id,
     });
-    if ("error" in result) {
-      return result;
+    if (!result.ok) {
+      return { ok: false, error: result.error };
     }
     return {
+      ok: true,
       claim_id: result.canonicalId,
       is_new: result.isNew,
       merged_similarity: result.mergedSimilarity,

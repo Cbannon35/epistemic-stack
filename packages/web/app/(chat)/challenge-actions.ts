@@ -95,15 +95,15 @@ export async function respondToChallengeAction(input: {
   body: string;
   evidenceUrl?: string | null;
   sessionId?: string | null;
-}): Promise<{ ok: boolean }> {
+}): Promise<{ ok: boolean; error?: string }> {
   const user = await requireUser();
   const body = input.body.trim();
   if (!(user && body)) {
-    return { ok: false };
+    return { ok: false, error: "not signed in or empty response" };
   }
   const evidence = normalizeEvidenceUrl(input.evidenceUrl);
   if (evidence.error) {
-    return { ok: false };
+    return { ok: false, error: evidence.error };
   }
   await ensureContributor(user.id, user.email ?? user.id);
   const id = await respondToChallenge({

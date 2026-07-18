@@ -113,6 +113,9 @@ const focus = (nodeId: string | null | undefined) =>
 function ClaimCard({ input, output }: { input: unknown; output: unknown }) {
   const i = obj(input);
   const o = obj(output);
+  if (o.ok === false) {
+    return <ErrorLine message={str(o.error) ?? "unknown"} tool="claim" />;
+  }
   const similarity = num(o.merged_similarity);
   return (
     <CardShell

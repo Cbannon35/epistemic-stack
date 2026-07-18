@@ -211,6 +211,9 @@ export const sources = pgTable(
   'sources',
   {
     id: text('id').primaryKey(), // content hash of the stored source text (content-addressed)
+    // The passage the id hashes. Nullable: rows recorded before this column
+    // existed have no text, and quote verification degrades gracefully there.
+    text: text('text'),
     stableId: text('stable_id'), // doi:… / isbn:… / url — a durable external identifier
     url: text('url'),
     title: text('title'),

@@ -94,6 +94,7 @@ export async function addSource(input: AddSourceInput): Promise<string> {
     .insert(schema.sources)
     .values({
       id,
+      text: input.text,
       stableId: input.stableId,
       url: input.url,
       title: input.title,
@@ -122,6 +123,21 @@ async function nearestClaim(vec: number[]) {
   return rows[0] ?? null;
 }
 
+// Fold text for quote-in-source matching: tolerant of the typographic
+// substitutions LLMs make when reproducing text (curly↔straight quotes, dash
+// variants, zero-width chars, whitespace runs) but strict about the words.
+// Distinct from the dedup normalization above — that one feeds contentHash and
+// must stay byte-stable.
+export function foldForMatch(text: string): string {
+  return text
+    .replace(/[\u2018\u2019\u201a\u201b]/g, "'")
+    .replace(/[\u201c\u201d\u201e\u201f]/g, '"')
+    .replace(/[\u2010-\u2015\u2212]/g, "-")
+    .replace(/[\u200b-\u200d\ufeff]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 export type RecordClaimInput = {
   text: string;
   sourceId: string;
@@ -132,13 +148,19 @@ export type RecordClaimInput = {
   sessionId?: string;
   turnId?: string;
   contributorId?: string;
+  /** Caller vouches the source was just created by it AND the quote was
+   * already verified against that source's text — skips the lookup+check. */
+  sourceVerified?: boolean;
 };
 
-export type RecordClaimResult = {
-  canonicalId: string;
-  isNew: boolean;
-  mergedSimilarity: number | null;
-};
+export type RecordClaimResult =
+  | { ok: false; error: string }
+  | {
+      ok: true;
+      canonicalId: string;
+      isNew: boolean;
+      mergedSimilarity: number | null;
+    };
 
 // Embed the claim, find the nearest existing claim; if it clears the dedup
 // threshold the new mention attaches to that canonical claim (a re-find that
@@ -147,22 +169,44 @@ export type RecordClaimResult = {
 // actually says it).
 export async function recordClaim(
   input: RecordClaimInput
-): Promise<RecordClaimResult | { error: string }> {
+): Promise<RecordClaimResult> {
+  const normalized = input.text.trim().replace(/\s+/g, " ");
   // The claim row is written before its mention, so a bad source id would fail
   // the mentions FK only after leaving an evidence-less claim behind. Validate
-  // up front and return graceful feedback, same as recordRelation.
-  const [source] = await db
-    .select({ id: schema.sources.id })
-    .from(schema.sources)
-    .where(eq(schema.sources.id, input.sourceId))
-    .limit(1);
-  if (!source) {
-    return {
-      error: `source id not found: ${input.sourceId}. Use the id returned by record_source.`,
-    };
+  // up front (concurrently with the embedding — they're independent) and
+  // return graceful feedback, same as recordRelation.
+  const [sourceRows, vec] = await Promise.all([
+    input.sourceVerified
+      ? Promise.resolve(null)
+      : db
+          .select({ id: schema.sources.id, text: schema.sources.text })
+          .from(schema.sources)
+          .where(eq(schema.sources.id, input.sourceId))
+          .limit(1),
+    embed(normalized),
+  ]);
+  if (sourceRows) {
+    const source = sourceRows[0];
+    if (!source) {
+      return {
+        ok: false,
+        error: `source id not found: ${input.sourceId}. Use the id returned by record_source.`,
+      };
+    }
+    // The receipt rule, enforced: the quote must actually appear in the
+    // source's stored text. Older sources have no stored text — degrade to
+    // the pre-verification behavior for those.
+    if (source.text) {
+      const quote = foldForMatch(input.quote);
+      if (!(quote && foldForMatch(source.text).includes(quote))) {
+        return {
+          ok: false,
+          error:
+            "quote not found verbatim in the source's stored text — copy an exact span from the source (typographic quote/dash differences are tolerated).",
+        };
+      }
+    }
   }
-  const normalized = input.text.trim().replace(/\s+/g, " ");
-  const vec = await embed(normalized);
   const near = await nearestClaim(vec);
 
   let canonicalId: string;
@@ -211,7 +255,7 @@ export async function recordClaim(
     contributionId: mentionContribution,
   });
 
-  return { canonicalId, isNew, mergedSimilarity };
+  return { ok: true, canonicalId, isNew, mergedSimilarity };
 }
 
 export type ClaimMatch = {

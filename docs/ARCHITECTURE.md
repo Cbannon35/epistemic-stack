@@ -51,7 +51,7 @@ Everything lives in one Postgres (local Supabase). Drizzle ORM, snake_case colum
 | `contributors` | People and agents (`kind: human \| agent`). eve is a fixed pseudo-contributor. |
 | `contributions` | **The receipt spine.** One row per write: contributor, `session_id` (investigation), `turn_id` (chat turn that caused it), method (e.g. `record_claim@1`, `promote_comment@1`), payload hash, optional signature. Every domain row FKs a contribution. |
 | `claims` | Canonical claim text + descriptors (modality, position, discipline…). Embedding column for dedup. |
-| `sources` | Documents/URLs with guarantees (peer-reviewed…) and `retrieval` jsonb (how it was fetched; delegated runs stamp `{operator, delegationId, delegatorId, query}`). |
+| `sources` | Documents/URLs with the stored passage `text` (nullable for pre-existing rows), guarantees (peer-reviewed…) and `retrieval` jsonb (how it was fetched; delegated runs stamp `{operator, delegationId, delegatorId, query}`). |
 | `mentions` | Claim ↔ source links with the verbatim supporting quote (per-quote extraction receipts). |
 | `relations` | Claim → claim edges: supports / contradicts / depends_on / refines. |
 | `cruxes` | Decision-relevant open questions attached to claims. |
@@ -88,7 +88,12 @@ previously exhausted the 100-connection local Postgres.
   (`record_claim`, `record_source`, `record_relation`, `record_crux`, `record_hypothesis`,
   `link_claim_to_hypothesis`, `query_commons`, `search_sources`, `search_web` (Tavily)).
   All tools funnel through `agent/lib/commons.ts`: embedding-based claim dedup + receipt
-  writing, and each passes the current `turn_id` for provenance.
+  writing, and each passes the current `turn_id` for provenance. `recordClaim` enforces the
+  receipt rule in code: the source must exist and the quote must appear in the source's
+  stored text (typography-tolerant match via `foldForMatch`; sources recorded before the
+  `text` column degrade gracefully). Challenge `evidence_url`s validate through one shared
+  `normalizeEvidenceUrl` (`lib/challenges.ts`) at every boundary — http(s) or `doi:`,
+  stored as the canonical href.
 - Durable sessions: `@workflow/world-postgres` persists every session event
   (`WORKFLOW_POSTGRES_URL`). Key properties the multiplayer layer is built on:
   - `GET /eve/v1/session/:id/stream?startIndex=N` is a **replayable log** — any number of

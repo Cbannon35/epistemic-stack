@@ -130,19 +130,25 @@ function ThreadBlock({
   onRespond,
 }: {
   thread: ChallengeThread;
-  onRespond: (challengeId: string, body: string) => Promise<void>;
+  onRespond: (challengeId: string, body: string) => Promise<string | null>;
 }) {
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const submit = async () => {
     const body = draft.trim();
     if (!body || sending) {
       return;
     }
     setSending(true);
-    setDraft("");
-    await onRespond(thread.challenge.id, body);
+    setError(null);
+    const failure = await onRespond(thread.challenge.id, body);
     setSending(false);
+    setError(failure);
+    // Keep the draft on failure so the response isn't lost.
+    if (!failure) {
+      setDraft("");
+    }
   };
   return (
     <div className="space-y-2 rounded-md border border-border/50 p-2">
@@ -167,6 +173,9 @@ function ThreadBlock({
         <p className="text-[10px] text-muted-foreground">
           <span className="shimmer">…</span>
         </p>
+      ) : null}
+      {error ? (
+        <p className="text-[10px] text-destructive/80">{error}</p>
       ) : null}
       <input
         className={inputClass}
@@ -195,7 +204,7 @@ function ChallengeForm({
     challengeType: ChallengeType;
     body: string;
     evidenceUrl: string;
-  }) => Promise<void>;
+  }) => Promise<string | null>;
   onCancel: () => void;
 }) {
   const [challengeType, setChallengeType] =
@@ -203,12 +212,15 @@ function ChallengeForm({
   const [body, setBody] = useState("");
   const [evidenceUrl, setEvidenceUrl] = useState("");
   const [sending, setSending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const submit = async () => {
     if (!body.trim() || sending) {
       return;
     }
     setSending(true);
-    await onSubmit({ challengeType, body, evidenceUrl });
+    setError(null);
+    // On failure the parent leaves the form mounted, inputs intact.
+    setError(await onSubmit({ challengeType, body, evidenceUrl }));
     setSending(false);
   };
   return (
@@ -238,10 +250,13 @@ function ChallengeForm({
       <input
         className={inputClass}
         onChange={(e) => setEvidenceUrl(e.target.value)}
-        placeholder="Evidence URL (optional)"
+        placeholder="Evidence URL or doi:… (optional)"
         type="url"
         value={evidenceUrl}
       />
+      {error ? (
+        <p className="text-[10px] text-destructive/80">{error}</p>
+      ) : null}
       <div className="flex items-center gap-2">
         <button
           className="rounded-md bg-foreground px-2 py-1 text-[11px] text-background transition-[opacity,transform] duration-150 hover:opacity-90 active:scale-[0.98] disabled:opacity-50"
@@ -313,28 +328,36 @@ export function NodeProvenance({
       challengeType: ChallengeType;
       body: string;
       evidenceUrl: string;
-    }) => {
-      await fileNodeChallenge({
+    }): Promise<string | null> => {
+      const result = await fileNodeChallenge({
         nodeId,
         challengeType: input.challengeType,
         body: input.body,
         evidenceUrl: input.evidenceUrl || null,
         sessionId: roomId,
       });
+      if (!result.ok) {
+        return result.error ?? "couldn't file the challenge";
+      }
       setChallenging(false);
       afterMutation("challenged");
+      return null;
     },
     [nodeId, roomId, afterMutation]
   );
 
   const respond = useCallback(
-    async (challengeId: string, body: string) => {
-      await respondToChallengeAction({
+    async (challengeId: string, body: string): Promise<string | null> => {
+      const result = await respondToChallengeAction({
         challengeId,
         body,
         sessionId: roomId,
       });
+      if (!result.ok) {
+        return result.error ?? "couldn't respond";
+      }
       afterMutation("responded");
+      return null;
     },
     [roomId, afterMutation]
   );
