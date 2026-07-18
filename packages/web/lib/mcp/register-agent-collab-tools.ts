@@ -29,8 +29,8 @@ import type {
 // Same trust model as the write tools: everything runs under the agent's own
 // contributor identity; rooms hear about it via server-side broadcasts.
 
-const TURN_ACCEPT_TIMEOUT_MS = 15_000;
-const REPLY_WAIT_BUDGET_MS = 45_000;
+const TURN_ACCEPT_TIMEOUT_MS = 25_000;
+const REPLY_WAIT_BUDGET_MS = 30_000;
 const REPLY_CLIP = 4000;
 
 export type AgentCollabScope = { origin: string; agent: AgentPrincipal };
@@ -208,43 +208,85 @@ type StreamEvent = {
   data?: { turnId?: string; message?: string | null; finishReason?: string };
 };
 
-/** Consume the send's own event stream just long enough to learn the accepted
- * turn id (and, when asked, eve's final answer). Abandoning the stream does
- * not cancel the turn — runs are durable server-side; every room member
- * converges via the shared durable stream, exactly as with browser sends. */
-async function watchTurn(
-  events: AsyncIterable<unknown>,
-  waitForReply: boolean
-): Promise<{ turnId: string | null; reply: string | null }> {
-  let turnId: string | null = null;
+// Time-boxed pull from the send's own event stream. The deadline must fire
+// even when the stream goes silent (a thinking model emits nothing for long
+// stretches), so each pull races the iterator against the remaining budget.
+// Abandoning the stream does not cancel the turn — runs are durable
+// server-side; members converge via the shared durable stream regardless.
+type TurnEventPull = { timedOut?: true; done?: boolean; event?: StreamEvent };
+
+function pullWithin(
+  it: AsyncIterator<unknown>,
+  ms: number
+): Promise<TurnEventPull> {
+  if (ms <= 0) {
+    return Promise.resolve({ timedOut: true });
+  }
+  return Promise.race([
+    it
+      .next()
+      .then((r) =>
+        r.done ? { done: true } : { event: r.value as StreamEvent }
+      ),
+    new Promise<TurnEventPull>((resolve) =>
+      setTimeout(() => resolve({ timedOut: true }), ms)
+    ),
+  ]);
+}
+
+/** Phase 1: wait for OUR turn to be accepted. The response stream replays
+ * the session log from the start, so earlier turns' events ride along —
+ * the turn is identified by text-matching its `message.received`, exactly
+ * how the browser matches its optimistic message. */
+async function awaitAcceptance(
+  it: AsyncIterator<unknown>,
+  message: string
+): Promise<string | null> {
+  const deadline = Date.now() + TURN_ACCEPT_TIMEOUT_MS;
+  for (;;) {
+    const pull = await pullWithin(it, deadline - Date.now());
+    if (pull.timedOut || pull.done) {
+      return null;
+    }
+    const event = pull.event;
+    if (
+      event?.type === "message.received" &&
+      event.data?.message === message &&
+      event.data.turnId
+    ) {
+      return event.data.turnId;
+    }
+  }
+}
+
+/** Phase 2 (optional): keep reading for eve's final answer TO OUR TURN,
+ * bounded well under the MCP client's request timeout. */
+async function awaitReply(
+  it: AsyncIterator<unknown>,
+  turnId: string
+): Promise<string | null> {
   let reply: string | null = null;
-  const deadline =
-    Date.now() + (waitForReply ? REPLY_WAIT_BUDGET_MS : TURN_ACCEPT_TIMEOUT_MS);
-  for await (const raw of events) {
-    const event = raw as StreamEvent;
-    if (event.data?.turnId) {
-      turnId = turnId ?? event.data.turnId;
+  const deadline = Date.now() + REPLY_WAIT_BUDGET_MS;
+  for (;;) {
+    const pull = await pullWithin(it, deadline - Date.now());
+    if (pull.timedOut || pull.done || !pull.event) {
+      return reply;
+    }
+    const event = pull.event;
+    if (event.data?.turnId !== turnId) {
+      continue;
     }
     if (
-      waitForReply &&
       event.type === "message.completed" &&
       event.data?.message &&
       event.data.finishReason !== "tool-calls"
     ) {
       reply = event.data.message;
     }
-    const done =
-      event.type === "turn.completed" ||
-      event.type === "turn.failed" ||
-      event.type === "session.waiting";
-    if ((!waitForReply && turnId) || (waitForReply && done && turnId)) {
-      break;
-    }
-    if (Date.now() > deadline) {
-      break;
+    if (event.type === "turn.completed" || event.type === "turn.failed") {
+      return reply;
     }
   }
-  return { turnId, reply };
 }
 
 function registerSendMessage(server: McpServer, scope: AgentCollabScope): void {
@@ -334,7 +376,10 @@ function registerSendMessage(server: McpServer, scope: AgentCollabScope): void {
         }
       }
 
-      const { turnId, reply } = await watchTurn(res, wait_for_reply ?? false);
+      // Attribution happens the moment the turn is accepted — before any
+      // reply-waiting — so a client abort mid-wait can't orphan authorship.
+      const it = (res as AsyncIterable<unknown>)[Symbol.asyncIterator]();
+      const turnId = await awaitAcceptance(it, message);
       if (turnId) {
         await insertTurnAuthor({
           sessionId: investigation_id,
@@ -347,6 +392,11 @@ function registerSendMessage(server: McpServer, scope: AgentCollabScope): void {
           displayName: scope.agent.name,
         }).catch(() => undefined);
       }
+      const reply =
+        (wait_for_reply ?? false) && turnId
+          ? await awaitReply(it, turnId)
+          : null;
+      it.return?.(undefined);
       announce(
         scope,
         investigation_id,
@@ -355,10 +405,13 @@ function registerSendMessage(server: McpServer, scope: AgentCollabScope): void {
       return asText({
         ok: true,
         turn_id: turnId,
+        queued: turnId === null || undefined,
         eve_reply: reply ? reply.slice(0, REPLY_CLIP) : null,
         note: reply
           ? undefined
-          : "The turn is running; members see it stream live. Use get_transcript later for the answer.",
+          : turnId
+            ? "The turn is running; members see it stream live. Use get_transcript later for the answer."
+            : "The message was accepted but is queued behind earlier turns; it will run in order. Author attribution requires the turn to start within the wait window.",
       });
     }
   );
