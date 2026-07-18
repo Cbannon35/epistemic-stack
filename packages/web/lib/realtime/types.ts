@@ -211,8 +211,15 @@ export type MergeChangedEvent = {
 export type AgentActivityEvent = {
   contributorId: string;
   name: string;
+  /** The human who minted this agent's key — agents act on someone's behalf,
+   * and the avatar stack says whose. */
+  onBehalfOfName?: string | null;
   /** Human-readable narration, e.g. `recorded claim "…"`. */
   action: string;
+  /** Which pane the action lives in — the agent's avatar sits in that
+   * pane's stack, migrating with its work the way human avatars follow
+   * pointers. Graph writes → "graph"; chat/comments → "chat". */
+  view?: "chat" | "graph";
   /** Graph node the action produced/touched — the agent cursor glides here. */
   nodeId?: string | null;
   investigationId: string;

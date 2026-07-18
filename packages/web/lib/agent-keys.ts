@@ -99,10 +99,17 @@ export async function revokeAgentKey(input: {
   return rows.length > 0;
 }
 
-export type AgentPrincipal = { contributorId: string; name: string };
+export type AgentPrincipal = {
+  contributorId: string;
+  name: string;
+  /** The human whose key this is — every agent acts ON BEHALF OF its minter,
+   * and the room UI says so. */
+  onBehalfOfId: string | null;
+  onBehalfOfName: string | null;
+};
 
-/** Bearer token → agent identity (null when unknown/revoked). Bumps
- * last_used_at opportunistically — liveness metadata, not a receipt. */
+/** Bearer token → agent identity + its minter (null when unknown/revoked).
+ * Bumps last_used_at opportunistically — liveness metadata, not a receipt. */
 export async function resolveAgentToken(
   token: string
 ): Promise<AgentPrincipal | null> {
@@ -114,6 +121,7 @@ export async function resolveAgentToken(
       id: schema.agentKeys.id,
       contributorId: schema.agentKeys.contributorId,
       name: schema.contributors.displayName,
+      createdBy: schema.agentKeys.createdBy,
     })
     .from(schema.agentKeys)
     .innerJoin(
@@ -130,6 +138,11 @@ export async function resolveAgentToken(
   if (!row) {
     return null;
   }
+  const [creator] = await db
+    .select({ displayName: schema.contributors.displayName })
+    .from(schema.contributors)
+    .where(eq(schema.contributors.id, row.createdBy))
+    .limit(1);
   db.update(schema.agentKeys)
     .set({ lastUsedAt: new Date() })
     .where(eq(schema.agentKeys.id, row.id))
@@ -137,5 +150,10 @@ export async function resolveAgentToken(
       () => undefined,
       () => undefined
     );
-  return { contributorId: row.contributorId, name: row.name };
+  return {
+    contributorId: row.contributorId,
+    name: row.name,
+    onBehalfOfId: row.createdBy,
+    onBehalfOfName: creator?.displayName ?? null,
+  };
 }

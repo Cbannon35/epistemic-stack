@@ -23,11 +23,16 @@ const SWEEP_MS = 5000;
 // just-written node may not exist yet — retry the position resolve.
 const RESOLVE_RETRIES = [400, 1200, 2600];
 
-export function useAgentActivity(eve: EveDriver): { cursors: string[] } {
+export function useAgentActivity(eve: EveDriver): {
+  cursors: string[];
+  /** contributorId → agent display name, for cursor labels. */
+  names: ReadonlyMap<string, string>;
+} {
   const { channel } = useRoom();
   const rf = useReactFlow();
   const agentsRef = useRef(new Map<string, ActiveAgent>());
   const [cursors, setCursors] = useState<string[]>([]);
+  const [names, setNames] = useState<ReadonlyMap<string, string>>(new Map());
   const timersRef = useRef(new Set<ReturnType<typeof setTimeout>>());
 
   const publish = useCallback(() => {
@@ -36,6 +41,7 @@ export function useAgentActivity(eve: EveDriver): { cursors: string[] } {
     );
     agentsBus.set(list);
     setCursors(list.map((a) => agentCursorId(a.contributorId)));
+    setNames(new Map(list.map((a) => [a.contributorId, a.name])));
   }, []);
 
   const nodeCenter = useCallback(
@@ -59,14 +65,14 @@ export function useAgentActivity(eve: EveDriver): { cursors: string[] } {
         agentsRef.current.set(p.contributorId, {
           contributorId: p.contributorId,
           name: p.name,
+          onBehalfOfName: p.onBehalfOfName ?? null,
+          view: p.view ?? "graph",
           lastTs: Date.now(),
           action: p.action,
         });
-        if (known) {
-          agentsBus.set([...agentsRef.current.values()]);
-        } else {
-          publish();
-        }
+        // Always publish: even a known agent may have MOVED panes, and the
+        // stacks filter on view.
+        publish();
         const cursor = agentCursorId(p.contributorId);
         eve.say(cursor, `${p.name}: ${p.action}`);
         const nodeId = p.nodeId;
@@ -131,5 +137,5 @@ export function useAgentActivity(eve: EveDriver): { cursors: string[] } {
     };
   }, [eve]);
 
-  return { cursors };
+  return { cursors, names };
 }

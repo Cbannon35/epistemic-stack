@@ -64,7 +64,9 @@ function announce(
   const payload: AgentActivityEvent = {
     contributorId: scope.agent.contributorId,
     name: scope.agent.name,
+    onBehalfOfName: scope.agent.onBehalfOfName,
     action,
+    view: "graph",
     nodeId: nodeId ?? null,
     investigationId,
     ts: Date.now(),

@@ -491,7 +491,10 @@ export function CursorLayer() {
       {agentActivity.cursors.map((id) => (
         <RemoteCursor
           color={colorForUser(id.slice(AGENT_CURSOR_PREFIX.length))}
-          displayName="agent"
+          displayName={
+            agentActivity.names.get(id.slice(AGENT_CURSOR_PREFIX.length)) ??
+            "agent"
+          }
           id={id}
           key={id}
           register={registerRefs}

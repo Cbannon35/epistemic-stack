@@ -10,6 +10,11 @@ import { useSyncExternalStore } from "react";
 export type ActiveAgent = {
   contributorId: string;
   name: string;
+  /** The human whose key the agent runs on — shown as "on behalf of …". */
+  onBehalfOfName: string | null;
+  /** Pane of the latest action — the avatar sits in that pane's stack,
+   * migrating with the agent's work like a human avatar follows a pointer. */
+  view: "chat" | "graph";
   /** epoch ms of the latest activity event. */
   lastTs: number;
   /** Latest narration line, e.g. `recorded claim "…"`. */

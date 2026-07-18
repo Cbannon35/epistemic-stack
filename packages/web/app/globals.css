@@ -317,6 +317,32 @@ textarea:focus-visible {
   animation: node-arrive 250ms var(--ease-spring) backwards;
 }
 
+/* A live agent's avatar breathes: a soft glow in its identity hue while it's
+ * actively working, so agents read as present collaborators in the stack —
+ * not badges. Set --agent-color inline on the element. */
+@keyframes agent-breathe {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in oklch, var(--agent-color) 55%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 4px
+      color-mix(in oklch, var(--agent-color) 18%, transparent);
+  }
+}
+
+.agent-avatar-live {
+  animation: agent-breathe 2.4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agent-avatar-live {
+    box-shadow: 0 0 0 2px
+      color-mix(in oklch, var(--agent-color) 35%, transparent);
+    animation: none;
+  }
+}
+
 /* Merge-preview diff: nodes the room would ADOPT wear an emerald halo while
  * the reviewer previews an incoming merge request. */
 .graph-node[data-incoming] {

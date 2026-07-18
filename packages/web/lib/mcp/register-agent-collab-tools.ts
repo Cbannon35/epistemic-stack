@@ -46,12 +46,15 @@ function asText(payload: unknown) {
 function announce(
   scope: AgentCollabScope,
   investigationId: string,
-  action: string
+  action: string,
+  view: "chat" | "graph" = "chat"
 ): void {
   const payload: AgentActivityEvent = {
     contributorId: scope.agent.contributorId,
     name: scope.agent.name,
+    onBehalfOfName: scope.agent.onBehalfOfName,
     action,
+    view,
     nodeId: null,
     investigationId,
     ts: Date.now(),
@@ -491,7 +494,12 @@ function registerDelegation(server: McpServer, scope: AgentCollabScope): void {
       await broadcastAdvance(scope, investigation_id, advance, {
         started: brief,
       });
-      announce(scope, investigation_id, `delegated to eve: “${brief}”`);
+      announce(
+        scope,
+        investigation_id,
+        `delegated to eve: “${brief}”`,
+        "graph"
+      );
       return asText({
         delegation_id: advance.delegationId,
         beats: advance.beats,

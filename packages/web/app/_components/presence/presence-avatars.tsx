@@ -1,5 +1,10 @@
 "use client";
 
+import { BotIcon } from "lucide-react";
+import {
+  type ActiveAgent,
+  useActiveAgents,
+} from "@/app/_components/agents/agents-bus";
 import { PersonCard } from "@/app/_components/people/person-card";
 import { useRoom } from "@/app/_components/room-provider";
 import {
@@ -7,7 +12,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { initialsFor } from "@/lib/realtime/color";
+import { colorForUser, initialsFor } from "@/lib/realtime/color";
 import { dedupeByUser, type PresenceMeta } from "@/lib/realtime/types";
 
 const MAX_SHOWN = 5;
@@ -36,6 +41,66 @@ export function AvatarDot({
     >
       {initialsFor(person.displayName)}
     </span>
+  );
+}
+
+// An agent is a collaborator like anyone else, so it wears an avatar in the
+// SAME stack — its identity hue, a bot glyph instead of initials, and a
+// breathing glow while it's actively working. The popover names its operator:
+// every key is minted by a human, and the room should know on whose behalf
+// the agent acts.
+function AgentAvatarDot({
+  agent,
+  size = "size-5",
+}: {
+  agent: ActiveAgent;
+  size?: string;
+}) {
+  const color = colorForUser(agent.contributorId);
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <button
+          aria-label={`${agent.name} (agent)`}
+          className="rounded-full outline-none transition-transform duration-150 focus-visible:ring-1 focus-visible:ring-ring active:scale-95"
+          type="button"
+        >
+          <span
+            className={`agent-avatar-live flex ${size} items-center justify-center rounded-full text-white`}
+            style={
+              {
+                backgroundColor: color,
+                "--agent-color": color,
+              } as React.CSSProperties
+            }
+          >
+            <BotIcon className="size-3" />
+          </span>
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-56 p-3">
+        <div className="flex items-center gap-2">
+          <span
+            className="flex size-6 shrink-0 items-center justify-center rounded-full text-white"
+            style={{ backgroundColor: color }}
+          >
+            <BotIcon className="size-3.5" />
+          </span>
+          <div className="min-w-0">
+            <p className="truncate font-medium text-sm">{agent.name}</p>
+            <p className="truncate text-[11px] text-muted-foreground">
+              agent
+              {agent.onBehalfOfName
+                ? ` · on behalf of ${agent.onBehalfOfName.split("@")[0]}`
+                : ""}
+            </p>
+          </div>
+        </div>
+        <p className="mt-2 truncate text-[11px] text-muted-foreground">
+          {agent.action}
+        </p>
+      </PopoverContent>
+    </Popover>
   );
 }
 
@@ -126,7 +191,14 @@ export function PresenceAvatars({ view }: { view?: PresenceMeta["view"] }) {
   const peers = dedupeByUser(channel.peers.values()).filter(
     (peer) => !view || peer.view === view
   );
-  if (peers.length === 0) {
+  // Live MCP agents join the same stack — collaborators, not a side widget.
+  // Same pane rule as humans: an agent's "pointer" is wherever its latest
+  // action lives (graph writes → graph, chat/comments → chat), so the
+  // avatar migrates between stacks with its work.
+  const agents = useActiveAgents().filter(
+    (agent) => !view || agent.view === view
+  );
+  if (peers.length === 0 && agents.length === 0) {
     return null;
   }
   const shown = peers.slice(0, MAX_SHOWN);
@@ -138,6 +210,16 @@ export function PresenceAvatars({ view }: { view?: PresenceMeta["view"] }) {
       peer.activity === "viewing"
         ? peer.displayName
         : `${peer.displayName} · ${peer.activity}`,
+  });
+  const agentAsPerson = (agent: ActiveAgent): AvatarPerson => ({
+    userId: agent.contributorId,
+    displayName: agent.name,
+    color: colorForUser(agent.contributorId),
+    title: `${agent.name} · agent${
+      agent.onBehalfOfName
+        ? ` on behalf of ${agent.onBehalfOfName.split("@")[0]}`
+        : ""
+    }`,
   });
   return (
     <span className="fade-in -space-x-1 flex items-center">
@@ -155,7 +237,12 @@ export function PresenceAvatars({ view }: { view?: PresenceMeta["view"] }) {
           </button>
         </PersonCard>
       ))}
-      <Overflow people={peers.map(asPerson)} />
+      {agents.map((agent) => (
+        <AgentAvatarDot agent={agent} key={agent.contributorId} />
+      ))}
+      <Overflow
+        people={[...peers.map(asPerson), ...agents.map(agentAsPerson)]}
+      />
     </span>
   );
 }
