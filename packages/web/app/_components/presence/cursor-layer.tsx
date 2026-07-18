@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAgentActivity } from "@/app/_components/agents/use-agent-activity";
 import { DelegationDock } from "@/app/_components/delegate/delegation-dock";
 import { useDelegations } from "@/app/_components/delegate/use-delegations";
+import { graphBus } from "@/app/_components/graph/graph-bus";
 import { FollowPill, useFollowCamera } from "@/app/_components/people/follow";
 import {
   type CursorRefs,
@@ -26,6 +27,12 @@ const CURSOR_SEND_MS = 40;
 const CHAT_SEND_MS = 90;
 const BUBBLE_FADE_MS = 4000;
 const CHAT_IDLE_CLOSE_MS = 10_000;
+
+// Where the own `/` chat input anchors when the pointer is off the pane —
+// beside the parking lot (presence/parking-lot.tsx), which statically hosts
+// the cursors of off-graph members.
+const PARKED_INPUT_X = 140;
+const PARKED_INPUT_BOTTOM = 120;
 
 type Remote = {
   tx: number;
@@ -55,6 +62,8 @@ export function CursorLayer() {
   const storeApi = useStoreApi();
   const remotesRef = useRef(new Map<string, Remote>());
   const ownPosRef = useRef<{ x: number; y: number } | null>(null);
+  const meClientIdRef = useRef(me.clientId);
+  meClientIdRef.current = me.clientId;
   const pointerOverRef = useRef(false);
   const [chatOpen, setChatOpen] = useState(false);
   const [chatText, setChatText] = useState("");
@@ -132,6 +141,20 @@ export function CursorLayer() {
   // Person-follow: camera shadows a teammate's cursor (people-bus state).
   const followTarget = useFollowCamera();
 
+  // Off-graph connections park in the STATIC lot (parking-lot.tsx) — their
+  // flow cursors hide here so nobody renders twice.
+  const parkedIds = useMemo(
+    () =>
+      new Set(
+        [...channel.peers.values()]
+          .filter((peer) => peer.view !== "graph")
+          .map((peer) => peer.clientId)
+      ),
+    [channel.peers]
+  );
+  const parkedIdsRef = useRef(parkedIds);
+  parkedIdsRef.current = parkedIds;
+
   const registerRefs = useCallback(
     (id: string, refs: Partial<CursorRefs>) => {
       const remote = ensureRemote(id);
@@ -195,16 +218,24 @@ export function CursorLayer() {
     const frame = (now: number) => {
       const dt = Math.min(64, now - prev);
       prev = now;
-      const [vx, vy, zoom] = storeApi.getState().transform;
-      for (const remote of remotesRef.current.values()) {
+      const state = storeApi.getState();
+      const [vx, vy, zoom] = state.transform;
+      const paneHeight = state.domNode?.clientHeight ?? 0;
+      for (const [id, remote] of remotesRef.current.entries()) {
         const { el } = remote;
         if (!el) {
           continue;
         }
-        // A parked cursor stays visible (Figma-style) — it only hides when the
-        // peer's pointer left the pane (gone event), they left the room (shell
-        // unmounts), or eve's tour ended. No idle timeout: with one person
-        // driving two windows, a timeout hides the cursor right as you look.
+        // Parked members render in the STATIC lot, not the flow layer.
+        if (parkedIdsRef.current.has(id)) {
+          el.style.opacity = "0";
+          continue;
+        }
+        // A parked-in-place cursor stays visible (Figma-style) — it only
+        // hides when the peer's pointer left the pane (gone event), they left
+        // the room (shell unmounts), or eve's tour ended. No idle timeout:
+        // with one person driving two windows, a timeout hides the cursor
+        // right as you look.
         if (remote.lastTs === 0 && !remote.hold) {
           el.style.opacity = "0";
           continue;
@@ -224,11 +255,18 @@ export function CursorLayer() {
           );
         }
       }
-      // Own chat input rides the raw pointer (already pane-relative).
+      // Own chat input rides the raw pointer; with the pointer off the pane
+      // (chat from anywhere via `/`) it anchors at the own parked slot.
       const wrap = chatWrapRef.current;
       const own = ownPosRef.current;
-      if (wrap && own) {
-        wrap.style.transform = `translate3d(${own.x}px, ${own.y}px, 0)`;
+      if (wrap) {
+        if (own) {
+          wrap.style.transform = `translate3d(${own.x}px, ${own.y}px, 0)`;
+        } else if (paneHeight > 0) {
+          wrap.style.transform = `translate3d(${PARKED_INPUT_X}px, ${
+            paneHeight - PARKED_INPUT_BOTTOM
+          }px, 0)`;
+        }
       }
       raf = requestAnimationFrame(frame);
     };
@@ -392,6 +430,11 @@ export function CursorLayer() {
         done: true,
         ts: Date.now(),
       });
+      // Broadcasts skip self — while parked, the lot shows your own bubble
+      // rising from your parked glyph via the local bus.
+      if (parkedIdsRef.current.has(me.clientId)) {
+        graphBus.emit("selfCursorChat", { text });
+      }
     }
     closeChat(!text);
   };
@@ -406,13 +449,14 @@ export function CursorLayer() {
         tourRef.current.stop();
         return;
       }
+      // No pointer-over requirement: `/` works from anywhere in the room —
+      // off-graph, your chat rises from your parked cursor in the lot.
       if (
         e.key !== "/" ||
         e.metaKey ||
         e.ctrlKey ||
         e.altKey ||
-        e.isComposing ||
-        !pointerOverRef.current
+        e.isComposing
       ) {
         return;
       }

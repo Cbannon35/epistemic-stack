@@ -21,6 +21,9 @@ type GraphBusEvents = {
   /** Escape the first-glance detail budget — tours/delegations walk nodes
    * the model chose from the FULL catalog, which may be tier-hidden. */
   revealNode: { nodeId: string };
+  /** Own committed cursor-chat while parked (broadcasts skip self) — the
+   * parking lot shows your bubble rising from your parked glyph. */
+  selfCursorChat: { text: string };
 };
 
 type AnyHandler = (payload: never) => void;

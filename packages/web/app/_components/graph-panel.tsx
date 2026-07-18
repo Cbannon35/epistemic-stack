@@ -46,6 +46,7 @@ import { ProposeMergeDialog } from "@/app/_components/merge/propose-merge-dialog
 import { CompareBeliefsPanel } from "@/app/_components/people/compare-beliefs-panel";
 import { peopleBus, usePeopleState } from "@/app/_components/people/people-bus";
 import { CursorLayer } from "@/app/_components/presence/cursor-layer";
+import { ParkingLot } from "@/app/_components/presence/parking-lot";
 import { PresenceAvatars } from "@/app/_components/presence/presence-avatars";
 import { ReleaseDialog } from "@/app/_components/releases/release-dialog";
 import { useRoom } from "@/app/_components/room-provider";
@@ -888,6 +889,9 @@ export function GraphPanel({
         <Controls showInteractive={false} />
         <CursorLayer />
       </ReactFlow>
+
+      {/* Cursor parking lot — off-graph members' cursors, beside the legend. */}
+      <ParkingLot />
 
       {/* Legend */}
       <div className="absolute bottom-3 left-3 z-10 flex flex-col gap-1 rounded-md border border-border/50 bg-background/85 p-2 backdrop-blur">

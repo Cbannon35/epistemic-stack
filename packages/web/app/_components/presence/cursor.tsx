@@ -12,6 +12,27 @@ export type CursorRefs = {
   bubble: HTMLDivElement | null;
 };
 
+/** The bare pointer glyph — shared by live cursors and the parking lot. */
+export function CursorGlyph({ color }: { color: string }) {
+  return (
+    <svg
+      aria-hidden="true"
+      className="drop-shadow-sm"
+      fill="none"
+      height="18"
+      viewBox="0 0 16 18"
+      width="16"
+    >
+      <path
+        d="M1.5 1.2L14 8.4L8.1 9.9L5.2 16.3L1.5 1.2Z"
+        fill={color}
+        stroke="var(--background)"
+        strokeWidth="1.2"
+      />
+    </svg>
+  );
+}
+
 export function RemoteCursor({
   id,
   displayName,
@@ -38,21 +59,7 @@ export function RemoteCursor({
           <SparklesIcon className="size-3.5" />
         </span>
       ) : (
-        <svg
-          aria-hidden="true"
-          className="drop-shadow-sm"
-          fill="none"
-          height="18"
-          viewBox="0 0 16 18"
-          width="16"
-        >
-          <path
-            d="M1.5 1.2L14 8.4L8.1 9.9L5.2 16.3L1.5 1.2Z"
-            fill={color}
-            stroke="var(--background)"
-            strokeWidth="1.2"
-          />
-        </svg>
+        <CursorGlyph color={color} />
       )}
       <div className="mt-1 ml-3 flex flex-col items-start gap-1">
         <span
