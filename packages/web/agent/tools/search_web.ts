@@ -7,10 +7,10 @@ import { z } from "zod";
 // debate, which OpenAlex won't surface.
 export default defineTool({
   description:
-    "Search the general web (news, blogs, institutional pages, debates) via Tavily. Use for non-academic material that scholarly search misses. Returns title, url, and a content snippet per result — read the snippet, then record_source + record_claim for what you use.",
+    "Search the general web (news, blogs, institutional pages, debates) via Tavily. Use for non-academic material that scholarly search misses. Returns title, url, and a content snippet per result — then read_source the promising URLs and record_claim from the full text.",
   inputSchema: z.object({
     query: z.string().min(1).describe("Web search query."),
-    max_results: z.number().int().min(1).max(10).default(6),
+    max_results: z.number().int().min(1).max(20).default(8),
   }),
   async execute({ query, max_results }) {
     const key = process.env.TAVILY_API_KEY;

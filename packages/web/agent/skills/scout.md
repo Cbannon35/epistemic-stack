@@ -144,7 +144,9 @@ and if the room redirects you mid-scout, follow the room.
 
 Carry the agenda forward: the avenues you declared are what the final report must
 account for, avenue by avenue — covered, thin, or empty (see the loop's Report
-step). An avenue that produced nothing is a finding, not a formatting problem.
+step). The scout's results are a reading list, not the evidence itself: processing
+means reading the full text (`read_source`) of **5 sources per avenue** before
+reporting. An avenue that produced nothing is a finding, not a formatting problem.
 
 **Hand-off:** with hypotheses recorded, proceed to deep research — read the best
 sources the scout surfaced, extract claims (`extract-claims`), relate them, and link

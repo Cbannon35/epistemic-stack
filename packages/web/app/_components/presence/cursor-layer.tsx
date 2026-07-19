@@ -30,6 +30,26 @@ const CURSOR_SEND_MS = 40;
 const CHAT_SEND_MS = 90;
 const BUBBLE_FADE_MS = 4000;
 const CHAT_IDLE_CLOSE_MS = 10_000;
+const AUTO_DEEP_BRIEF_MAX = 400;
+
+type AutoDeepMsg = {
+  role: string;
+  parts?: ReadonlyArray<{ type?: string; text?: string }>;
+};
+
+// The room's question = its first user message (same derivation the sidebar
+// and prior-work strip use).
+function firstUserQuestion(messages: readonly AutoDeepMsg[]): string | null {
+  const first = messages.find((m) => m.role === "user");
+  if (!first) {
+    return null;
+  }
+  const text = (first.parts ?? [])
+    .flatMap((p) => (p.type === "text" && p.text ? [p.text] : []))
+    .join(" ")
+    .trim();
+  return text ? text.slice(0, AUTO_DEEP_BRIEF_MAX) : null;
+}
 
 type Remote = {
   tx: number;
@@ -54,7 +74,8 @@ type Remote = {
 // React re-renders. The `/` cursor chat input rides the own pointer, and the
 // eve tour cursor is one more entry in the same registry.
 export function CursorLayer() {
-  const { channel, me } = useRoom();
+  const room = useRoom();
+  const { channel, me } = room;
   const rf = useReactFlow();
   const storeApi = useStoreApi();
   const remotesRef = useRef(new Map<string, Remote>());
@@ -128,6 +149,46 @@ export function CursorLayer() {
   const delegations = useDelegations(eveDriver);
   const delegationsRef = useRef(delegations);
   delegationsRef.current = delegations;
+
+  // Auto-deep: the room's FIRST answered question kicks off a deep delegated
+  // investigation automatically — eve's chat turn frames (agenda, hypotheses),
+  // then the harness does the enforced reading over that structure. Fires once
+  // per room, only in the asker's tab (they become delegator + run host).
+  const prevTurnMine = useRef(false);
+  useEffect(() => {
+    const wasMine = prevTurnMine.current;
+    prevTurnMine.current = room.activeTurn?.mine ?? false;
+    const roomId = room.roomId;
+    if (!(wasMine && room.activeTurn === null && room.status === "ready")) {
+      return;
+    }
+    if (!roomId) {
+      return;
+    }
+    const guardKey = `epistack-auto-deep:${roomId}`;
+    try {
+      if (sessionStorage.getItem(guardKey)) {
+        return;
+      }
+      sessionStorage.setItem(guardKey, "1");
+    } catch {
+      return; // no storage → no reliable once-guard → don't auto-fire
+    }
+    // Someone already ran (or is running) a delegation here — don't pile on.
+    if (delegationsRef.current.rows.length > 0) {
+      return;
+    }
+    const messages =
+      (room.data as { messages?: readonly AutoDeepMsg[] }).messages ?? [];
+    const question = firstUserQuestion(messages);
+    if (question) {
+      delegationsRef.current
+        .start(`Deep-research the room's question: ${question}`)
+        .catch(() => {
+          // Surfaced through the delegations error state; nothing to do here.
+        });
+    }
+  }, [room.activeTurn, room.status, room.roomId, room.data]);
 
   // External MCP agents too — one cursor per agent contributor, driven by
   // server-broadcast activity events; cursor ids/names derive from the bus.

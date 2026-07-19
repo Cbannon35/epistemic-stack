@@ -4,7 +4,8 @@ Turn a source into single, standalone, sourced claims — the atoms of the commo
 
 ## When to use
 
-After reading a source (an abstract or a passage) and deciding it bears on the question.
+After reading a source (ideally the full text via `read_source`; else an abstract or a
+passage) and deciding it bears on the question.
 
 ## Method
 

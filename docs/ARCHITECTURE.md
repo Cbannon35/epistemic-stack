@@ -231,16 +231,23 @@ nodes/edges with `t > cap` — replaying how the commons was built.
 ### 7.6 Delegated eve investigations (`lib/delegate/`, `app/api/delegate/`, `app/_components/delegate/`)
 
 `@eve investigate <brief>` (cursor chat) or the investigations dock (graph top-right) creates
-a `delegations` row and runs a bounded pipeline — plan (model call over the node catalog) →
-research (Tavily web search, no model call) → synthesize (model call + commons writes via
-`agent/lib/commons.ts`, so real dedup + receipts, attributed to eve with delegator recorded).
+a `delegations` row and runs the **deep-ingestion phase machine** (code-enforced quotas the
+model can't cut short): plan (model: avenues of consideration + queries) → research (search
+every avenue, no model) → **read** (one step per source: full text via
+`agent/lib/fetch-text.ts`, one extract call, up to 5 sources per avenue) → **pressure**
+(one step per recorded claim: pressure-test into crux questions) → **probe** (one step per
+question: search + read + extract answering claims, edged `supports`/`contradicts` back to
+the parent claim; unanswered or unsettled questions become open cruxes) → synthesize
+(relations + optional hypothesis + avenue-accounted summary). All writes via
+`agent/lib/commons.ts` — real dedup + receipts, attributed to eve with delegator recorded;
+sources carry `delegated_read@1` / `delegated_probe@1` retrieval receipts.
 The **delegator's client drives** stepwise POSTs (`/api/delegate/step`) — every request ≤ one
-model call, so no route timeouts — and broadcasts `delegation-*` events; everyone sees a
-fuchsia `eve · investigating` cursor crawl the examined nodes, with live narration in the
-dock. Concurrency: N per room; cancel is delegator-only; a step-silence reaper marks
-abandoned runs interrupted. **No-source-no-claim:** without a verbatim web quote, eve adds
-structure only (relations, cruxes, hypothesis links). Requires `TAVILY_API_KEY` for sourced
-claims.
+model call, so no route timeouts (a full run is ~30–50 small calls) — and broadcasts
+`delegation-*` events; everyone sees a fuchsia `eve · investigating` cursor crawl the
+examined nodes, with live narration in the dock. Concurrency: N per room; cancel is
+delegator-only; a step-silence reaper marks abandoned runs interrupted.
+**No-source-no-claim:** every claim's quote is verified against the stored full text.
+Requires `TAVILY_API_KEY` for sourced claims (no search → structure-only run).
 
 ### 7.7 Comments (`app/_components/comments/`, `lib/comments.ts`)
 

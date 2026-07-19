@@ -22,13 +22,13 @@ function abstractFromInverted(
 
 export default defineTool({
   description:
-    "Search scholarly literature (OpenAlex) for sources relevant to a query. Returns candidate works with title, abstract, authors, venue, year, and a URL/DOI. Use this to find evidence, then read the abstract and record_source + record_claim for what you use.",
+    "Search scholarly literature (OpenAlex) for sources relevant to a query. Returns candidate works with title, abstract, authors, venue, year, and a URL/DOI. Use this to find evidence, then read_source the URL for full text (or record_source with the abstract if the page can't be read) and record_claim from it.",
   inputSchema: z.object({
     query: z
       .string()
       .min(1)
       .describe("Search query — a topic, claim, or subtopic."),
-    limit: z.number().int().min(1).max(25).default(6).describe("Max results."),
+    limit: z.number().int().min(1).max(20).default(8).describe("Max results."),
   }),
   async execute({ query, limit }) {
     const url = `https://api.openalex.org/works?search=${encodeURIComponent(

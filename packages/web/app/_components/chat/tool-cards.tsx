@@ -407,6 +407,7 @@ const SKELETON_LABELS: Record<string, string> = {
   record_relation: "linking claims…",
   link_claim_to_hypothesis: "linking to hypothesis…",
   query_commons: "searching the commons…",
+  read_source: "reading source…",
   search_sources: "searching scholarly literature…",
   search_web: "searching the web…",
 };

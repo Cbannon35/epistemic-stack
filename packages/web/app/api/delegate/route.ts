@@ -42,6 +42,9 @@ export async function POST(request: Request) {
     });
     return NextResponse.json(advance);
   } catch (error) {
+    // Log the full error (AI SDK schema-validation detail lives in .cause, not
+    // the terse .message) so a failed plan call is diagnosable server-side.
+    console.error("[delegate] start failed:", error);
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "delegation failed" },
       { status: 500 }
