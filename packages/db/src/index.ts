@@ -3,6 +3,12 @@ import postgres from 'postgres'
 import * as schema from './schema'
 
 export * as schema from './schema'
+export {
+  type CommonsSeed,
+  loadSeed,
+  parseSeed,
+  type SeedCounts,
+} from './seed'
 
 const DEFAULT_URL = 'postgresql://postgres:postgres@127.0.0.1:54422/postgres'
 

@@ -3,6 +3,7 @@
 import {
   BotIcon,
   ChevronRightIcon,
+  DatabaseIcon,
   GitForkIcon,
   GitMergeIcon,
   LogOutIcon,
@@ -18,6 +19,7 @@ import { Collapsible as CollapsiblePrimitive } from "radix-ui";
 import { type FormEvent, useEffect, useRef, useState } from "react";
 import { ConnectAgentDialog } from "@/app/_components/agents/connect-agent-dialog";
 import { CommonsSearchMenuItem } from "@/app/_components/commons/commons-search";
+import { LoadSeedDialog } from "@/app/_components/commons/load-seed-dialog";
 import { graphBus } from "@/app/_components/graph/graph-bus";
 import { useNav } from "@/app/_components/nav-context";
 import { AvatarStack } from "@/app/_components/presence/presence-avatars";
@@ -428,6 +430,7 @@ export function AppSidebar({
   // selected thing — not the route's investigation row.
   const [commonsActive, setCommonsActive] = useState(false);
   const [connectAgentOpen, setConnectAgentOpen] = useState(false);
+  const [loadSeedOpen, setLoadSeedOpen] = useState(false);
   useEffect(
     () => graphBus.on("commonsScope", ({ active }) => setCommonsActive(active)),
     []
@@ -553,6 +556,10 @@ export function AppSidebar({
               <BotIcon className="size-4" />
               Connect an agent
             </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => setLoadSeedOpen(true)}>
+              <DatabaseIcon className="size-4" />
+              Load sample data
+            </DropdownMenuItem>
             <form action={signOut}>
               <DropdownMenuItem asChild>
                 <button className="w-full" type="submit">
@@ -567,6 +574,7 @@ export function AppSidebar({
           onOpenChange={setConnectAgentOpen}
           open={connectAgentOpen}
         />
+        <LoadSeedDialog onOpenChange={setLoadSeedOpen} open={loadSeedOpen} />
       </SidebarFooter>
     </Sidebar>
   );
