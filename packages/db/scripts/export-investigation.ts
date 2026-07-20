@@ -120,17 +120,32 @@ const contributions = await db
   .select()
   .from(schema.contributions)
   .where(inArray(schema.contributions.id, [...neededContribIds]))
-const contributorIds = [...new Set(contributions.map((c) => c.contributorId))]
+const investigationTurns = await db
+  .select()
+  .from(schema.investigationTurns)
+  .where(eq(schema.investigationTurns.sessionId, sessionId))
 
-const [contributors, investigationTurns] = await Promise.all([
-  contributorIds.length
-    ? db.select().from(schema.contributors).where(inArray(schema.contributors.id, contributorIds))
-    : Promise.resolve([]),
-  db
-    .select()
-    .from(schema.investigationTurns)
-    .where(eq(schema.investigationTurns.sessionId, sessionId)),
-])
+// Contributors referenced ANYWHERE the seed will insert: the receipts, the
+// investigation row (contributor_id, notNull FK), and its turns. Missing any
+// of these breaks the load into a fresh commons (contributors table empty).
+const contributorIds = [
+  ...new Set([
+    ...contributions.map((c) => c.contributorId),
+    ...investigations.map((i) => i.contributorId).filter((id) => id != null),
+    ...investigationTurns.map((t) => t.contributorId).filter((id) => id != null),
+  ]),
+]
+const contributorsRaw = contributorIds.length
+  ? await db
+      .select()
+      .from(schema.contributors)
+      .where(inArray(schema.contributors.id, contributorIds))
+  : []
+// These seeds ship to public repos — anonymize human identities. The agent
+// (eve) keeps its name; the provenance shape ("asked by ‹someone›") survives.
+const contributors = contributorsRaw.map((c) =>
+  c.kind === 'human' ? { ...c, displayName: 'Anonymous', publicKey: null } : c,
+)
 
 const seed = {
   meta: {

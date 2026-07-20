@@ -23,6 +23,13 @@
       "displayName": "eve-research-agent",
       "publicKey": null,
       "createdAt": "2026-07-20T00:27:41.309Z"
+    },
+    {
+      "id": "242824d3-2778-4647-808c-f8e09ccf9493",
+      "kind": "human",
+      "displayName": "Anonymous",
+      "publicKey": null,
+      "createdAt": "2026-07-20T02:48:15.196Z"
     }
   ],
   "contributions": [
