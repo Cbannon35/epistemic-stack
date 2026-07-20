@@ -3,7 +3,7 @@
 Submission to the FLF Epistemic Case Study Competition.
 Paper: [`epistack.pdf`](./epistack.pdf) (built from `main.tex`).
 
-- **Demo video:** _[LINK — TODO]_ — the `▶` boxes in the paper reference timestamps in this video.
+- **Demo video:** https://www.youtube.com/watch?v=e11pvJ_94LY — the `▶` boxes in the paper reference timestamps in this video.
 - **Case-study data:** the three contest investigations (COVID-19 origins, LHC black holes, eggs) ship as committed seeds in `data/seeds/` — see **Load the case studies** below.
 
 ## What this is
