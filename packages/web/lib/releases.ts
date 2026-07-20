@@ -102,9 +102,17 @@ export async function cutRelease(input: {
   return { release: toRecord(release, creator?.displayName ?? "unknown") };
 }
 
+// `releases.id` is a uuid column, so Postgres throws on a malformed id rather
+// than returning no rows — which surfaced as a 500 on /releases/<junk> and as
+// a leaked SQL error over MCP. A bad id is simply "not found".
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export async function getRelease(
   id: string
 ): Promise<(ReleaseRecord & { hops: ScopeHop[] }) | null> {
+  if (!UUID.test(id)) {
+    return null;
+  }
   const [row] = await db
     .select()
     .from(schema.releases)
@@ -135,6 +143,25 @@ export function listReleases(
     )
     .where(eq(schema.releases.investigationId, investigationId))
     .orderBy(desc(schema.releases.version))
+    .then((rows) =>
+      rows.map((r) =>
+        toRecord(r.releases, r.contributors?.displayName ?? "unknown")
+      )
+    );
+}
+
+/** Every release ever cut, newest first — the public gallery's source. Cheap
+ * by design: metadata only, no graph resolution (the detail page pays that
+ * cost for one release, not the index for all of them). */
+export function listAllReleases(): Promise<ReleaseRecord[]> {
+  return db
+    .select()
+    .from(schema.releases)
+    .leftJoin(
+      schema.contributors,
+      eq(schema.contributors.id, schema.releases.createdBy)
+    )
+    .orderBy(desc(schema.releases.createdAt))
     .then((rows) =>
       rows.map((r) =>
         toRecord(r.releases, r.contributors?.displayName ?? "unknown")

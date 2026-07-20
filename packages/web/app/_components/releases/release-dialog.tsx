@@ -4,6 +4,7 @@ import { ExternalLinkIcon, TagIcon } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { CopyChip, useOrigin } from "@/app/_components/ui/copy-chip";
 import { cutReleaseAction } from "@/app/(chat)/release-actions";
+import { formatDate } from "@/app/topics/_components/stat-tile";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -21,34 +22,33 @@ import { citationFor, type ReleaseRecord } from "@/lib/release-types";
 // The version list doubles as the room's release history; each row hands out
 // the public permalink and a ready-to-paste citation.
 
+// Two lines on purpose: the actions eat ~150px of a ~400px dialog, so a
+// single truncating line drops the date and creator (they sort last) long
+// before the label runs out of room.
 function ReleaseRow({ release }: { release: ReleaseRecord }) {
   const origin = useOrigin();
   const url = `${origin}/releases/${release.id}`;
   return (
-    <div className="rounded-lg border border-border/50 px-2.5 py-2">
-      <div className="flex items-center justify-between gap-2">
-        <p className="min-w-0 truncate text-xs">
-          <span className="font-medium">v{release.version}</span>
+    <div className="flex items-center justify-between gap-3 rounded-lg border border-border/50 px-3 py-2">
+      <div className="min-w-0">
+        <p className="truncate font-medium text-xs">
+          v{release.version}
           {release.name ? ` — ${release.name}` : ""}
-          <span className="text-muted-foreground">
-            {" "}
-            · {release.cutoff.slice(0, 10)} · {release.creatorName}
-          </span>
         </p>
-        <div className="flex shrink-0 items-center gap-1.5">
-          <CopyChip
-            label="Citation"
-            text={citationFor(release, origin).plain}
-          />
-          <a
-            className="flex items-center gap-1 rounded-md border border-border/60 px-2 py-1 text-muted-foreground text-xs transition-colors duration-150 hover:bg-muted hover:text-foreground"
-            href={url}
-            rel="noreferrer"
-            target="_blank"
-          >
-            <ExternalLinkIcon className="size-3" /> Page
-          </a>
-        </div>
+        <p className="truncate text-[10px] text-muted-foreground">
+          {formatDate(release.cutoff)} · {release.creatorName}
+        </p>
+      </div>
+      <div className="flex shrink-0 items-center gap-1.5">
+        <CopyChip label="Citation" text={citationFor(release, origin).plain} />
+        <a
+          className="flex items-center gap-1 rounded-md border border-border/60 px-2 py-1 text-muted-foreground text-xs transition-colors duration-150 hover:bg-muted hover:text-foreground"
+          href={url}
+          rel="noreferrer"
+          target="_blank"
+        >
+          <ExternalLinkIcon className="size-3" /> Page
+        </a>
       </div>
     </div>
   );
@@ -108,7 +108,7 @@ export function ReleaseDialog({
 
   return (
     <Dialog onOpenChange={onOpenChange} open={open}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Releases</DialogTitle>
           <DialogDescription>
@@ -118,16 +118,26 @@ export function ReleaseDialog({
         </DialogHeader>
         <div className="space-y-4">
           {justCut ? (
-            <p className="rounded-md border border-emerald-600/30 bg-emerald-600/10 px-3 py-2 text-emerald-700 text-xs dark:text-emerald-400">
-              <TagIcon className="mr-1 inline size-3" />v{justCut.version} is
-              live — grab its citation below.
+            <p className="flex items-center gap-1.5 rounded-md border border-emerald-600/30 bg-emerald-600/10 px-3 py-2 text-emerald-700 text-xs dark:text-emerald-400">
+              <TagIcon className="size-3 shrink-0" />
+              <span>v{justCut.version} is live — grab its citation below.</span>
             </p>
           ) : null}
           {releases.length > 0 ? (
-            <div className="max-h-48 space-y-1.5 overflow-y-auto">
-              {releases.map((r) => (
-                <ReleaseRow key={r.id} release={r} />
-              ))}
+            <div className="space-y-1.5">
+              <div className="max-h-48 space-y-1.5 overflow-y-auto">
+                {releases.map((r) => (
+                  <ReleaseRow key={r.id} release={r} />
+                ))}
+              </div>
+              <a
+                className="inline-block text-[10px] text-muted-foreground underline-offset-4 transition-colors hover:text-foreground hover:underline"
+                href="/releases"
+                rel="noreferrer"
+                target="_blank"
+              >
+                Browse all releases →
+              </a>
             </div>
           ) : (
             <p className="text-muted-foreground text-xs">

@@ -18,7 +18,13 @@ Authorization: Bearer esk_…
 ## 2. MCP tool surface
 
 **Read:** `search`, `fetch`, `get_claim`, `get_hypothesis`, `get_topic`, `list_topics`,
-`list_investigations`, `get_investigation_graph`, `get_transcript`.
+`list_releases`, `get_release`, `list_investigations`, `get_investigation_graph`,
+`get_transcript`.
+
+`list_topics`/`get_topic` and `list_releases`/`get_release` are deliberate mirrors: a topic
+slice answers "what does the commons say *now*", a release answers "what did it say at the
+moment this was cited". `get_release` returns the frozen graph plus a ready-to-paste
+citation, and resolves to the same result forever.
 
 **Graph writes** (all append-only, receipted, embedding-deduped):
 `create_investigation`, `record_source`, `record_claim`, `record_relation`,

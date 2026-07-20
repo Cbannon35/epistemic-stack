@@ -7,6 +7,8 @@ import type { ChallengeThread, NodeReceipts } from "@/lib/challenge-types";
 import { getNodeReceipts } from "@/lib/challenges";
 import { type CommonsHit, searchCommons } from "@/lib/commons-search";
 import { listCredences, summarizeCredences } from "@/lib/credences";
+import { citationFor } from "@/lib/release-types";
+import { getRelease, listAllReleases, releaseGraph } from "@/lib/releases";
 import { listTopics, resolveTopicSlice, type TopicRecord } from "@/lib/topics";
 
 // The commons' MCP tool surface — READ ONLY by design. External assistants
@@ -404,9 +406,78 @@ function registerTopicTools(server: McpServer, scope: McpScope): void {
   );
 }
 
+// Releases are the frozen counterpart to topic slices: a topic answers "what
+// does the commons say now", a release answers "what did it say at the moment
+// this was cited". Shaped like topicOverview on purpose so a client can treat
+// them interchangeably; topClaims is clipped for the same reason (the full
+// frozen graph is far too large for a tool result).
+function registerReleaseTools(server: McpServer, scope: McpScope): void {
+  // Commons-wide, like list_topics: a release cuts across investigations, not
+  // topic slices, so it has no scoped meaning on a per-topic connector.
+  if (scope.topic) {
+    return;
+  }
+  server.registerTool(
+    "list_releases",
+    {
+      title: "List published releases",
+      description:
+        "Every citable release cut from the commons — frozen, versioned checkpoints of an investigation's graph, each with its public permalink.",
+      inputSchema: {},
+    },
+    async () => {
+      const releases = await listAllReleases();
+      return asText({
+        releases: releases.map((r) => ({
+          id: r.id,
+          title: r.title,
+          version: r.version,
+          name: r.name,
+          notes: r.notes,
+          cutoff: r.cutoff,
+          creatorName: r.creatorName,
+          url: `${scope.origin}/releases/${r.id}`,
+        })),
+      });
+    }
+  );
+  server.registerTool(
+    "get_release",
+    {
+      title: "Get a release's frozen graph",
+      description:
+        "One release as of its cut moment — counts, hypotheses with support/credence, top claims, and a ready-to-paste citation. Resolves identically forever.",
+      inputSchema: { id: z.string().min(1) },
+    },
+    async ({ id }) => {
+      const release = await getRelease(id);
+      if (!release) {
+        return asText({ error: `unknown release "${id}"` });
+      }
+      const { hops: _hops, ...record } = release;
+      const graph = await releaseGraph(release);
+      const contributors = new Set(
+        Object.values(graph.provenance).map((p) => p.contributorId)
+      );
+      return asText({
+        ...record,
+        counts: { ...graph.counts, contributors: contributors.size },
+        hypotheses: graph.assessment.hypotheses,
+        topClaims: graph.nodes
+          .filter((n) => n.kind === "claim")
+          .slice(0, TOP_CLAIMS)
+          .map((n) => ({ id: n.id, text: clip(n.label) })),
+        citation: citationFor(record, scope.origin).plain,
+        url: `${scope.origin}/releases/${record.id}`,
+      });
+    }
+  );
+}
+
 export function registerCommonsTools(server: McpServer, scope: McpScope): void {
   registerSearchAndFetch(server, scope);
   registerGetClaim(server, scope);
   registerGetHypothesis(server, scope);
   registerTopicTools(server, scope);
+  registerReleaseTools(server, scope);
 }
