@@ -21,8 +21,7 @@ if (!sessionId) {
 }
 
 const db = createDb()
-const raw = (sql: string) =>
-  db.execute(sql) as unknown as Promise<Record<string, unknown>[]>
+const raw = (sql: string) => db.execute(sql) as unknown as Promise<Record<string, unknown>[]>
 const q = (s: string) => s.replace(/'/g, "''")
 
 // A session = its entry run (id === sessionId) + its turn runs. eve stores no
@@ -32,9 +31,7 @@ const q = (s: string) => s.replace(/'/g, "''")
 // apart) differ earlier. Scope by that 13-char prefix so a multi-session store
 // exports only THIS session's runs.
 const runPrefix = sessionId.slice(0, 13)
-const runRows = await raw(
-  `select id from workflow.workflow_runs where id like '${q(runPrefix)}%'`
-)
+const runRows = await raw(`select id from workflow.workflow_runs where id like '${q(runPrefix)}%'`)
 const runIds: string[] = runRows.map((r) => r.id as string)
 if (!runIds.includes(sessionId)) {
   console.error(`no entry workflow run with id ${sessionId}`)

@@ -588,7 +588,10 @@ async function readStep(
     const foldedView = foldForMatch(view);
     const hypothesisIds = new Set(state.hypotheses.map((h) => h.id));
     let landed = 0;
-    for (const candidateClaim of object.claims.slice(0, MAX_CLAIMS_PER_SOURCE)) {
+    for (const candidateClaim of object.claims.slice(
+      0,
+      MAX_CLAIMS_PER_SOURCE
+    )) {
       const quote = foldForMatch(candidateClaim.quote);
       if (!(quote && foldedView.includes(quote))) {
         continue; // invented quote — no receipt, no claim
