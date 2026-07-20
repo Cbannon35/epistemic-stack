@@ -30,7 +30,9 @@ export async function POST(request: Request) {
     });
     return NextResponse.json(advance);
   } catch (error) {
-    // Phase failures already marked the row inside stepDelegation.
+    // Phase failures already marked the row inside stepDelegation. Log the full
+    // error (AI SDK detail lives in .cause) so a failed step is diagnosable.
+    console.error("[delegate] step failed:", error);
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "step failed" },
       { status: 500 }
