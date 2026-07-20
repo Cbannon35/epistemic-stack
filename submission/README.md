@@ -1,4 +1,4 @@
-# Epistack — judge runbook
+# Epistemic-Stack — judge runbook
 
 Submission to the FLF Epistemic Case Study Competition.
 Paper: [`epistack.pdf`](./epistack.pdf) (built from `main.tex`).
