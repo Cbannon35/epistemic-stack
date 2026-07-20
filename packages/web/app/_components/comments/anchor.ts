@@ -14,12 +14,17 @@ const CONTEXT_CHARS = 32;
 const MIN_QUOTE = 3;
 const MAX_QUOTE = 1000;
 
-/** Offset of a range boundary within an element's full textContent. */
+/** Offset of a range boundary within an element's full textContent.
+ * Uses cloneContents().textContent, not range.toString() — the latter
+ * inserts synthetic newlines at block-element (paragraph/list-item)
+ * boundaries that plain textContent (used everywhere else, including
+ * findQuoteRange's re-find) never has, which silently breaks anchoring
+ * for any quote spanning a paragraph/list boundary. */
 function offsetWithin(element: Element, node: Node, offset: number): number {
   const range = document.createRange();
   range.selectNodeContents(element);
   range.setEnd(node, offset);
-  return range.toString().length;
+  return range.cloneContents().textContent?.length ?? 0;
 }
 
 export function anchorFromSelection(
@@ -38,7 +43,9 @@ export function anchorFromSelection(
     return null;
   }
   const messageId = messageEl.getAttribute("data-message-id");
-  const quote = range.toString().trim();
+  // textContent-space, matching offsetWithin and findQuoteRange's hay —
+  // NOT range.toString(), which diverges at block-element boundaries.
+  const quote = (range.cloneContents().textContent ?? "").trim();
   if (!messageId || quote.length < MIN_QUOTE || quote.length > MAX_QUOTE) {
     return null;
   }
@@ -52,7 +59,7 @@ export function anchorFromSelection(
   return {
     anchor: {
       messageId,
-      quote: range.toString(),
+      quote,
       quotePrefix: text.slice(Math.max(0, start - CONTEXT_CHARS), start),
       quoteSuffix: text.slice(end, end + CONTEXT_CHARS),
     },

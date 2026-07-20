@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { PromoteChallengeHost } from "@/app/_components/challenges/promote-to-challenge";
 import { findQuoteRange } from "@/app/_components/comments/anchor";
@@ -40,6 +40,9 @@ export function HighlightLayer() {
   const lastMessage = room.data.messages?.at(-1);
   const streaming =
     lastMessage?.metadata?.status === "streaming" ? "yes" : "no";
+  // Threads whose quote wasn't found in the DOM on the last repaint — drives
+  // the retry schedule below.
+  const missingRef = useRef(0);
 
   const repaint = useCallback(() => {
     const anchored = threads.filter(
@@ -47,6 +50,7 @@ export function HighlightLayer() {
     );
     const byName = new Map<string, Range[]>();
     const next: PlacedThread[] = [];
+    let missing = 0;
 
     for (const thread of anchored) {
       const { root } = thread;
@@ -54,6 +58,7 @@ export function HighlightLayer() {
         `[data-message-id="${CSS.escape(root.messageId as string)}"]`
       );
       if (!messageEl) {
+        missing += 1;
         continue;
       }
       const range = findQuoteRange(
@@ -85,6 +90,7 @@ export function HighlightLayer() {
       } else {
         // Quote not re-found (e.g. message still streaming): badge falls back
         // to the message's top-right so the thread stays reachable.
+        missing += 1;
         next.push({
           thread,
           messageEl,
@@ -115,15 +121,47 @@ export function HighlightLayer() {
         }
       }
     }
+    missingRef.current = missing;
     setPlaced(next);
   }, [threads]);
 
   // Repaint when threads or the transcript change (new messages, streaming
-  // completion re-renders), and on resize. rAF defers past React's commit.
+  // completion re-renders). rAF defers past React's commit.
+  //
+  // The transcript also fills in asynchronously — text streams in and markdown
+  // renders after commit — so the first pass routinely runs while a quote is
+  // still absent from the DOM, and no room state changes afterwards to
+  // re-trigger it (which is why threads used to stay unanchored until someone
+  // posted a comment). So retry on a short backoff, stopping as soon as every
+  // thread anchors. Bounded on purpose: watching the DOM instead would see the
+  // badge portals this layer writes into each message and repaint in a loop.
   // biome-ignore lint/correctness/useExhaustiveDependencies: messageCount/streaming are repaint triggers, read inside the DOM pass
   useEffect(() => {
-    const raf = requestAnimationFrame(repaint);
-    return () => cancelAnimationFrame(raf);
+    const retryDelays = [150, 400, 1000, 2000, 4000];
+    let attempt = 0;
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let raf = 0;
+
+    const run = () => {
+      raf = requestAnimationFrame(() => {
+        if (cancelled) {
+          return;
+        }
+        repaint();
+        if (missingRef.current > 0 && attempt < retryDelays.length) {
+          timer = setTimeout(run, retryDelays[attempt]);
+          attempt += 1;
+        }
+      });
+    };
+    run();
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+      cancelAnimationFrame(raf);
+    };
   }, [repaint, messageCount, streaming]);
 
   useEffect(() => {
