@@ -4,7 +4,7 @@ Submission to the FLF Epistemic Case Study Competition.
 Paper: [`epistack.pdf`](./epistack.pdf) (built from `main.tex`).
 
 - **Demo video:** _[LINK — TODO]_ — the `▶` boxes in the paper reference timestamps in this video.
-- **Case-study data:** the three contest investigations (COVID-19 origins, LHC black holes, eggs) ship as a database snapshot — see **Restore the case studies** below.
+- **Case-study data:** the three contest investigations (COVID-19 origins, LHC black holes, eggs) ship as committed seeds in `data/seeds/` — see **Load the case studies** below.
 
 ## What this is
 
@@ -31,23 +31,41 @@ cp .env.example .env      # then fill in:
 bun run dev               # app + eve agent, one process → http://localhost:3000
 ```
 
-### Restore the case studies
+### Load the case studies
 
-The snapshot with the three contest investigations (full receipt trails included):
+The three contest investigations ship as seeds in [`data/seeds/`](../data/seeds/) — committed
+to the repo, full receipt trails included. Each has two halves: the claim graph and eve's
+replayable chat session.
+
+| Seed | Investigation | Graph |
+| --- | --- | --- |
+| `covid-lab-leak` | *Did COVID originate from a lab leak?* | 48 claims · 19 sources · 4 hypotheses · 64 links |
+| `eggs` | *Are eggs good to eat?* | 22 claims · 22 sources · 3 hypotheses · 85 links |
+| `cern-black-hole` | *Will CERN generate a black hole?* | 23 claims · 15 sources · 4 hypotheses · 37 links |
+
+**Easiest:** in the running app, use **"Load sample data"** — it loads graph and chat together
+and opens the room in one step.
+
+**Or from the CLI**, after `supabase start` and `bun run db:migrate` (repo root, ideally a
+fresh install — both loaders are idempotent):
 
 ```sh
-# from the repo root, after `supabase start` and `bun run db:migrate`
-psql "postgresql://postgres:postgres@127.0.0.1:54422/postgres" -f submission/snapshot.sql
+DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54422/postgres \
+  bun packages/db/scripts/load-seed.ts data/seeds/covid-lab-leak.json      # claim graph
+DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54422/postgres \
+  bun packages/db/scripts/load-session.ts data/seeds/covid-lab-leak.session.json  # chat replay
 ```
 
-_[TODO: confirm snapshot filename/path once committed.]_
+Open the room: the graph renders with receipts, and the chat replays eve's whole
+investigation. `<name>-transcript.json` is a plain decoded transcript for reading outside the
+app — not needed to load. See [`data/seeds/README.md`](../data/seeds/README.md) for caveats.
 
 ## What to try
 
 1. **Follow a receipt.** Open a case-study investigation, click any claim in the graph, open its provenance panel: creation receipt (who/method/when), verbatim quotes per source, challenge threads, derived dispute state.
 2. **Scrub belief.** Open a hypothesis: per-person credence timelines, community credence; use the time slider on the graph.
 3. **Delegate a run of your own.** In any room, hand eve a brief on a sub-question you care about and watch the phases stream in: plan → research → read → pressure → probe → synthesize.
-4. **Cut and consume a release.** Cut a release from the graph toolbar, open its public page, then hit `GET /api/releases/<id>/export` for the frozen machine-readable graph (with BibTeX citation).
+4. **Cut and consume a release.** Cut a release from the graph toolbar, open its public page, then hit `GET /api/releases/<id>/export` for the frozen machine-readable graph (with BibTeX citation). [`/releases`](http://localhost:3000/releases) is the public gallery — every release ever cut, grouped by investigation with versions stacked newest-first. Releases are readable over MCP too (`list_releases`, `get_release`), including without a key, so an agent can cite a frozen graph it had no hand in building.
 5. **Connect your own agent.** Sidebar → "Connect an agent" → mint an `esk_` key, then point any MCP client at it:
 
 ```json
