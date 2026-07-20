@@ -60,7 +60,10 @@ Open http://localhost:3000, sign in (local auth emails are caught by the mail sa
 http://localhost:54424 — nothing is actually sent), ask a question, and pop open the graph.
 
 Reachable from another machine on your LAN/Tailscale too — `next dev` binds `0.0.0.0` by
-default, so `http://<this-machine's-LAN-or-Tailscale-IP>:3000` works as-is.
+default, so `http://<this-machine's-LAN-or-Tailscale-IP>:3000` serves fine. Next blocks the
+cross-origin HMR websocket for hosts it doesn't know, though, so add the address you browse
+from to `allowedDevOrigins` in `packages/web/next.config.ts` (the list there is this machine's
+— yours will differ). Without it the page loads but hot reload silently stops working.
 
 **Multiplayer in one sentence:** open the same investigation URL (`/i/<id>`) in a second
 browser/profile with a second account — cursors, presence avatars, tours, comments, and

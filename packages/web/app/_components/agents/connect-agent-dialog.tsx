@@ -8,6 +8,7 @@ import {
   mintAgentKeyAction,
   revokeAgentKeyAction,
 } from "@/app/(chat)/agent-actions";
+import { formatDate } from "@/app/topics/_components/stat-tile";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -24,7 +25,15 @@ import type { AgentKeyListItem } from "@/lib/agent-keys";
 // multiplayer contributors over MCP — reading, writing, believing, and
 // disputing under their own identity. The token shows exactly once.
 
-function MintedPane({ token, name }: { token: string; name: string }) {
+function MintedPane({
+  token,
+  name,
+  onDone,
+}: {
+  token: string;
+  name: string;
+  onDone: () => void;
+}) {
   const origin = useOrigin();
   const mcpUrl = `${origin}/api/mcp/agent/mcp`;
   const config = JSON.stringify(
@@ -76,10 +85,28 @@ function MintedPane({ token, name }: { token: string; name: string }) {
           <CopyChip text={config} />
         </div>
       </div>
+      {/* The pane replaces the key list outright, so without this the only way
+          out is the window chrome's ✕. */}
+      <div className="flex justify-end border-border/40 border-t pt-3">
+        <Button onClick={onDone} type="button" variant="outline">
+          Done
+        </Button>
+      </div>
     </div>
   );
 }
 
+function agentStatus(agent: AgentKeyListItem): string {
+  if (agent.revokedAt !== null) {
+    return "revoked";
+  }
+  return agent.lastUsedAt
+    ? `last active ${formatDate(agent.lastUsedAt)}`
+    : "never used";
+}
+
+// Two lines, matching the release dialog: name and status on one truncating
+// line loses the status first (it sorts last) as soon as the name is long.
 function AgentRow({
   agent,
   onRevoke,
@@ -89,20 +116,20 @@ function AgentRow({
 }) {
   const revoked = agent.revokedAt !== null;
   return (
-    <div className="flex items-center justify-between gap-2 rounded-lg border border-border/50 px-2.5 py-2">
-      <p className="min-w-0 truncate text-xs">
-        <BotIcon className="mr-1 inline size-3 text-muted-foreground" />
-        <span className={revoked ? "line-through" : ""}>{agent.name}</span>
-        <span className="text-muted-foreground">
-          {" "}
-          ·{" "}
-          {revoked
-            ? "revoked"
-            : agent.lastUsedAt
-              ? `active ${agent.lastUsedAt.slice(0, 10)}`
-              : "never used"}
-        </span>
-      </p>
+    <div className="flex items-center justify-between gap-3 rounded-lg border border-border/50 px-3 py-2">
+      <div className="flex min-w-0 items-center gap-1.5">
+        <BotIcon className="size-3 shrink-0 text-muted-foreground" />
+        <div className="min-w-0">
+          <p
+            className={`truncate font-medium text-xs ${revoked ? "text-muted-foreground line-through" : ""}`}
+          >
+            {agent.name}
+          </p>
+          <p className="truncate text-[10px] text-muted-foreground">
+            {agentStatus(agent)}
+          </p>
+        </div>
+      </div>
       {revoked ? null : (
         <button
           className="shrink-0 rounded-md border border-border/60 px-2 py-1 text-muted-foreground text-xs transition-colors duration-150 hover:bg-muted hover:text-foreground"
@@ -167,7 +194,7 @@ export function ConnectAgentDialog({
 
   return (
     <Dialog onOpenChange={onOpenChange} open={open}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Connect an agent</DialogTitle>
           <DialogDescription>
@@ -178,7 +205,11 @@ export function ConnectAgentDialog({
           </DialogDescription>
         </DialogHeader>
         {minted ? (
-          <MintedPane name={minted.name} token={minted.token} />
+          <MintedPane
+            name={minted.name}
+            onDone={() => setMinted(null)}
+            token={minted.token}
+          />
         ) : (
           <div className="space-y-4">
             {agents.length > 0 ? (

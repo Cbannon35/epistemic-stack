@@ -6,6 +6,15 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   devIndicators: false,
   poweredByHeader: false,
+  // Lets dev HMR work when this box is reached over the LAN or Tailscale
+  // instead of localhost (otherwise Next blocks the cross-origin websocket).
+  allowedDevOrigins: [
+    "10.0.0.225",
+    "100.88.189.93",
+    "christophers-mac-mini",
+    "100.70.156.8",
+    "christophers-macbook-air",
+  ],
   // The commons package ships raw TypeScript from a workspace; transpile it.
   transpilePackages: ["@epistack/db"],
   images: {
