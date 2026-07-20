@@ -198,10 +198,11 @@ const planSchema = z.object({
         name: z
           .string()
           .describe("2-4 word name for this avenue of consideration."),
+        // No hard .max — a schema-max the model overshoots makes generateObject
+        // THROW (500ing the whole run); bound in code instead. Same below.
         queries: z
           .array(z.string())
           .min(1)
-          .max(2)
           .describe("1-2 concrete web search queries for this avenue."),
       })
     )
@@ -218,11 +219,15 @@ const planSchema = z.object({
           .describe("1 sentence: why this node matters to the brief"),
       })
     )
-    .max(3)
     .describe(
-      "1-3 existing graph nodes worth examining first. Empty if the graph has nothing relevant."
+      "At most 3 existing graph nodes worth examining first. Empty if the graph has nothing relevant."
     ),
 });
+
+// Bounds for model-produced arrays, applied in code (schema maxes throw).
+const MAX_QUERIES_PER_AVENUE = 2;
+const MAX_EXAMINE = 3;
+const MAX_SYNTH_RELATIONS = 4;
 
 export async function startDelegation(input: {
   sessionId: string;
@@ -261,14 +266,15 @@ export async function startDelegation(input: {
     ].join("\n"),
   });
 
-  // Hallucination guard: only visit nodes that exist.
-  const examine = object.examine.filter((e) => catalogIds.has(e.nodeId));
+  // Hallucination guard: only visit nodes that exist. Clamp count in code —
+  // the schema no longer hard-caps it (an overshoot there throws, 500ing the run).
+  const examine = object.examine
+    .filter((e) => catalogIds.has(e.nodeId))
+    .slice(0, MAX_EXAMINE);
   const avenues: AvenueState[] = webSearchAvailable()
-    ? // Clamp defensively: a small model overshoots the count sometimes, and
-      // the schema no longer hard-rejects it (that 500'd the whole run).
-      object.avenues.slice(0, MAX_AVENUES).map((a) => ({
+    ? object.avenues.slice(0, MAX_AVENUES).map((a) => ({
         name: a.name,
-        queries: a.queries,
+        queries: a.queries.slice(0, MAX_QUERIES_PER_AVENUE),
         candidates: [],
         cursor: 0,
         reads: 0,
@@ -483,7 +489,6 @@ const extractSchema = z.object({
         polarity: z.enum(["supports", "undermines"]),
       })
     )
-    .max(MAX_CLAIMS_PER_SOURCE)
     .describe(
       "The atomic claims this source asserts that bear on the brief. Only what the source says — never your own synthesis."
     ),
@@ -583,7 +588,7 @@ async function readStep(
     const foldedView = foldForMatch(view);
     const hypothesisIds = new Set(state.hypotheses.map((h) => h.id));
     let landed = 0;
-    for (const candidateClaim of object.claims) {
+    for (const candidateClaim of object.claims.slice(0, MAX_CLAIMS_PER_SOURCE)) {
       const quote = foldForMatch(candidateClaim.quote);
       if (!(quote && foldedView.includes(quote))) {
         continue; // invented quote — no receipt, no claim
@@ -672,7 +677,6 @@ const pressureSchema = z.object({
           .describe("One concrete web search query to research it."),
       })
     )
-    .max(QUESTIONS_PER_CLAIM)
     .describe(
       "The 1-2 questions whose answers would MOST change our confidence in the claim. Probe the joints: would this hold anyway (baseline)? does it actually connect (driver)? is the stated reason the real reason (mechanism)? is it as big as claimed (stakes)? could it run the OPPOSITE way?"
     ),
@@ -710,7 +714,7 @@ async function pressureStep(
   });
 
   const beats: DelegationBeat[] = [];
-  for (const q of object.questions) {
+  for (const q of object.questions.slice(0, QUESTIONS_PER_CLAIM)) {
     if (state.probes.length >= MAX_PROBES) {
       break;
     }
@@ -751,9 +755,10 @@ const probeSchema = z.object({
           .describe("Effect on the PARENT claim, taken as true."),
       })
     )
-    .max(3)
-    .describe("Claims from this source that bear on the question."),
+    .describe("Up to 3 claims from this source that bear on the question."),
 });
+
+const MAX_PROBE_CLAIMS = 3;
 
 async function probeStep(
   ctx: RunContext,
@@ -851,7 +856,7 @@ async function probeStep(
       sessionId: ctx.sessionId,
     });
     const foldedView = foldForMatch(view);
-    for (const candidate of object.claims) {
+    for (const candidate of object.claims.slice(0, MAX_PROBE_CLAIMS)) {
       const quote = foldForMatch(candidate.quote);
       if (!(quote && foldedView.includes(quote))) {
         continue;
@@ -932,8 +937,9 @@ const synthesisSchema = z.object({
         rationale: z.string().describe("1 sentence: why this edge holds."),
       })
     )
-    .max(4)
-    .describe("Typed edges between claims that clearly bear on each other."),
+    .describe(
+      "Up to 4 typed edges between claims that clearly bear on each other."
+    ),
   hypothesisStatement: z
     .string()
     .describe(
@@ -991,7 +997,7 @@ async function synthesizePhase(
   });
 
   const beats: DelegationBeat[] = [];
-  for (const relation of object.relations) {
+  for (const relation of object.relations.slice(0, MAX_SYNTH_RELATIONS)) {
     const from = claimIds.has(relation.from) ? relation.from : null;
     const to = claimIds.has(relation.to) ? relation.to : null;
     if (!(from && to) || from === to) {
