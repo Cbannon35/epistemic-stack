@@ -18,6 +18,7 @@ Available seeds:
 | --- | --- | --- |
 | `covid-lab-leak` | *Did COVID originate from a lab leak?* | 48 claims · 19 sources · 4 hypotheses · 64 links |
 | `eggs` | *Are eggs good to eat?* | 22 claims · 22 sources · 3 hypotheses · 85 links |
+| `cern-black-hole` | *Will CERN generate a black hole?* | 23 claims · 15 sources · 4 hypotheses · 37 links |
 
 ## Load it (both halves)
 
