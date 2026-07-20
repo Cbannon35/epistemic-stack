@@ -39,12 +39,13 @@
   xrightmargin=2pt
 }
 
-% Demo-video placeholder: \video{--:--}{what the clip shows}
-\newcommand{\video}[2]{%
+% Demo-video box: \video{mm:ss}{seconds-offset}{what the clip shows}
+% The label links to the walkthrough video at that timestamp.
+\newcommand{\video}[3]{%
   \par\medskip\noindent
   {\setlength{\fboxsep}{5pt}\setlength{\fboxrule}{0.5pt}%
    \fcolorbox{vidframe}{vidback}{\parbox{\dimexpr\linewidth-2\fboxsep-2\fboxrule\relax}%
-     {\small\textcolor{vid}{$\blacktriangleright$}~\textbf{Demo video #1}\quad #2}}}%
+     {\small\href{https://youtu.be/e11pvJ_94LY?t=#2}{\textcolor{vid}{$\blacktriangleright$}~\textbf{Demo video #1}}\quad #3}}}%
   \par\medskip}
 
 \newcommand{\code}[1]{\texttt{\small #1}}
@@ -536,7 +537,7 @@ other axes, the structured run is stronger:
   readers who weight the evidence differently.
 \end{itemize}
 
-\video{--:--}{A delegated run: the brief, the narration from eve, nodes
+\video{3:02}{182}{A delegated run: the brief, the narration from eve, nodes
 that appear in the shared graph, and a recorded open crux.}
 \section{Part 2: the platform}
 \label{sec:platform}
@@ -581,7 +582,7 @@ The multiplayer layer has these parts:
   graph. The system attributes the run to the delegator.
 \end{itemize}
 
-\video{--:--}{Two people and eve in one room: cursors, cursor chat, a
+\video{6:14}{374}{Two people and eve in one room: cursors, cursor chat, a
 tour, and a comment that becomes a challenge.}
 
 \subsection{Agents as first-class contributors}
@@ -660,7 +661,7 @@ specific agent can discount only that agent's contributions. Late-binding
 trust makes the question ``should agents write?'' a per-reader setting,
 not a platform policy.
 
-\video{--:--}{An agent connected over MCP: the key mint, the agent's
+\video{10:08}{608}{An agent connected over MCP: the key mint, the agent's
 avatar and cursor, claims that land with receipts, and a challenge that a
 person files on one claim.}
 
@@ -697,7 +698,7 @@ deduplicated and content-addressed. The same claim can belong to many
 lineages at the same time. Coverage compounds and does not split into
 rival copies. Wikis and document workflows lack this property.
 
-\video{--:--}{Fork an investigation, diverge, open a merge request,
+\video{8:19}{499}{Fork an investigation, diverge, open a merge request,
 review the preview of incoming nodes, and accept.}
 
 \subsection{Releases}
@@ -793,7 +794,7 @@ provenance panel for any claim. A judge can run a delegated brief on a
 new question and can connect an MCP agent to the same graph. A judge can
 inspect every claim in this paper in the artifact.
 
-\video{--:--}{The three case-study graphs: hypotheses and credences for
+\video{2:21}{141}{The three case-study graphs: hypotheses and credences for
 COVID origins, the dependency chain for black holes, and the crux map for
 eggs.}
 
@@ -1055,9 +1056,22 @@ removed. The summary follows:
 \section{Demo video index}
 \label{app:video}
 
-One walkthrough video accompanies the submission. The
-$\blacktriangleright$ boxes in the text mark the relevant timestamps.
-\emph{(The submission form and the README give the link and the
-timestamps.)}
+One walkthrough video accompanies the submission:
+\url{https://www.youtube.com/watch?v=e11pvJ_94LY}. The
+$\blacktriangleright$ boxes in the text link directly to the relevant
+timestamps:
+
+\begin{itemize}
+\item \href{https://youtu.be/e11pvJ_94LY?t=141}{2:21} --- the three
+  case-study graphs in the commons.
+\item \href{https://youtu.be/e11pvJ_94LY?t=182}{3:02} --- a delegated
+  deep-research run writing into the shared graph.
+\item \href{https://youtu.be/e11pvJ_94LY?t=374}{6:14} --- multiplayer:
+  presence, cursors, cursor chat, comments, and an eve tour.
+\item \href{https://youtu.be/e11pvJ_94LY?t=499}{8:19} --- fork, merge
+  request, review of incoming nodes, and acceptance.
+\item \href{https://youtu.be/e11pvJ_94LY?t=608}{10:08} --- an MCP agent
+  as a first-class contributor.
+\end{itemize}
 
 \end{document}
