@@ -51,7 +51,9 @@
 \newcommand{\code}[1]{\texttt{\small #1}}
 
 \title{\LARGE\textbf{Epistack: a multiplayer epistemic commons\\ where agents are first-class contributors}}
-\author{Christopher Bannon\\ \small UC Berkeley \quad \href{mailto:bannon.c.35@berkeley.edu}{bannon.c.35@berkeley.edu}}
+\author{Christopher Bannon\\ \small \href{mailto:bannon.c.35@berkeley.edu}{bannon.c.35@berkeley.edu}
+\and Kavin Kumaravel\\ \small \href{mailto:kkumaravel@berkeley.edu}{kkumaravel@berkeley.edu}
+\and Uyen Phan\\ \small \href{mailto:uyenphan@cca.edu}{uyenphan@cca.edu}}
 \date{July 19, 2026}
 
 \begin{document}
@@ -663,9 +665,8 @@ specific agent can discount only that agent's contributions. Late-binding
 trust makes the question ``should agents write?'' a per-reader setting,
 not a platform policy.
 
-\video{10:08}{608}{An agent connected over MCP: the key mint in the app,
-a ChatGPT session loading a release through the MCP tools, and follow-up
-questions answered from the released graph.}
+\video{10:08}{608}{An agent connected over MCP: the key mint in the app
+and an external client reading the released graph through the MCP tools.}
 
 \subsection{Fork and merge}
 \label{sec:merge}
@@ -788,10 +789,10 @@ code for any single case.
   and open cruxes carry that work.
 \end{itemize}
 
-We include the investigations, their releases, and the full receipt
-trails in the submission as a database snapshot. The judge runbook
-(\code{README.md}, Appendix~\ref{app:runbook}) restores the snapshot
-locally in a few commands. A judge can open the rooms and inspect the
+We include the investigations and their full receipt trails in the
+repository as committed seeds (\code{data/seeds/}). The judge runbook
+(\code{README.md}, Appendix~\ref{app:runbook}) loads them locally in a
+few steps. A judge can open the rooms and inspect the
 provenance panel for any claim. A judge can run a delegated brief on a
 new question and can connect an MCP agent to the same graph. A judge can
 inspect every claim in this paper in the artifact.
@@ -900,8 +901,9 @@ and deeper. Better models improve every judgment call behind a schema.
 More contributors, human or agent, deepen one deduplicated graph. The
 contributors do not scatter documents.
 
-The system runs. The three case studies are in the system. The submission
-includes the snapshot. A judge can open any claim and follow its receipts.
+The system runs. The three case studies are in the system. The
+repository includes their seeds. A judge can open any claim and follow
+its receipts.
 \begin{thebibliography}{9}\small
 \bibitem{flf} Future of Life Foundation.
 \emph{Lab leaks, black holes, and eggs: epistemic case study competition.}
@@ -1041,11 +1043,14 @@ removed. The summary follows:
 \begin{enumerate}
 \item Install the prerequisites: Bun, Node $\geq 24$, Docker (for local
   Supabase), and the Supabase CLI.
-\item Run \code{bun install}, then \code{supabase start}. Restore the
-  included case-study snapshot with one \code{psql} command. The README
-  gives the exact line. Copy \code{.env.example} to \code{.env}. The file
-  needs two keys: a model API key and a search API key. Run
+\item Run \code{bun install}, then \code{supabase start}, then
+  \code{bun run db:migrate}. Copy \code{.env.example} to \code{.env}.
+  The file needs two keys: a model API key and a search API key. Run
   \code{bun run dev}.
+\item Load the case studies. In the app, open the account menu and
+  select ``Load sample data.'' This loads the committed seeds from
+  \code{data/seeds/} (graph and chat together). The README documents a
+  script alternative.
 \item Open the three case-study investigations. Inspect the provenance
   panel of any node. Scrub the belief timeline. Open a release page and
   its \code{/export} URL.
@@ -1062,19 +1067,15 @@ One walkthrough video accompanies the submission:
 \url{https://www.youtube.com/watch?v=e11pvJ_94LY}. The
 $\blacktriangleright$ boxes in the text link directly to the relevant
 timestamps:
-
-\begin{itemize}
-\item \href{https://youtu.be/e11pvJ_94LY?t=141}{2:21} --- the seeded
-  commons and its case-study clusters.
-\item \href{https://youtu.be/e11pvJ_94LY?t=182}{3:02} --- a full
-  pipeline run: harness narration, claim extraction, synthesis, and the
-  finished graph.
-\item \href{https://youtu.be/e11pvJ_94LY?t=374}{6:14} --- multiplayer:
-  presence, comments, live chat, and an eve tour.
-\item \href{https://youtu.be/e11pvJ_94LY?t=499}{8:19} --- fork, merge
-  request, review of incoming nodes, and acceptance.
-\item \href{https://youtu.be/e11pvJ_94LY?t=608}{10:08} --- an external
-  agent reading a release over MCP.
-\end{itemize}
+\href{https://youtu.be/e11pvJ_94LY?t=141}{2:21} the seeded commons and
+its case-study clusters;
+\href{https://youtu.be/e11pvJ_94LY?t=182}{3:02} a full pipeline run
+(harness narration, claim extraction, synthesis, the finished graph);
+\href{https://youtu.be/e11pvJ_94LY?t=374}{6:14} multiplayer (presence,
+comments, live chat, an eve tour);
+\href{https://youtu.be/e11pvJ_94LY?t=499}{8:19} fork, merge request,
+review of incoming nodes, and acceptance;
+\href{https://youtu.be/e11pvJ_94LY?t=608}{10:08} the agent key mint and
+an external client reading the released graph over MCP.
 
 \end{document}
