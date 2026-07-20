@@ -29,7 +29,9 @@ Supabase (Postgres + Auth + Realtime) · Drizzle ORM · Tailwind v4 · @xyflow/r
   `nvm alias default 24`). If the dev server prints *"eve requires Node.js >=24"*, your PATH
   is resolving an older Node.
 - **[Supabase CLI](https://supabase.com/docs/guides/local-development)** + Docker — the local
-  database, auth, and realtime stack.
+  database, auth, and realtime stack. Docker Desktop works; [colima](https://github.com/abiosoft/colima)
+  (`brew install colima docker`) is a lighter no-GUI alternative — see the colima note below if
+  you go that route.
 
 ## Setup
 
@@ -44,15 +46,21 @@ supabase start
 cp packages/web/.env.example packages/web/.env
 #    → fill in the keys (see table below; supabase start prints the local values)
 
-# 3. Apply database migrations
+# 3. Apply database migrations (the commons schema)
 bun run db:migrate
 
-# 4. Run the app (from packages/web)
-cd packages/web && bun run dev
+# 4. Bootstrap eve's durable-session schema (one-time; separate from step 3 — see below)
+cd packages/web && bunx workflow-postgres-setup
+
+# 5. Run the app (from packages/web)
+bun run dev
 ```
 
 Open http://localhost:3000, sign in (local auth emails are caught by the mail sandbox at
 http://localhost:54424 — nothing is actually sent), ask a question, and pop open the graph.
+
+Reachable from another machine on your LAN/Tailscale too — `next dev` binds `0.0.0.0` by
+default, so `http://<this-machine's-LAN-or-Tailscale-IP>:3000` works as-is.
 
 **Multiplayer in one sentence:** open the same investigation URL (`/i/<id>`) in a second
 browser/profile with a second account — cursors, presence avatars, tours, comments, and
@@ -75,6 +83,28 @@ challenges are all live between them.
 \* The helper model (`packages/web/lib/eve-model.ts`) falls back to OpenAI (`OPENAI_API_KEY`)
 if no Anthropic key is set.
 
+## Connecting an MCP client (e.g. Claude Code) to this project
+
+The app exposes its own MCP server so external agents — including your Claude Code CLI —
+can read and write the commons as first-class contributors (full protocol: `docs/agents.md`).
+
+1. With the dev server running, sign in at http://localhost:3000, then **sidebar → account
+   menu → Connect an agent → mint**. Copy the one-time `esk_…` token.
+2. Register it as a **global** (user-scope) MCP server, so it's available from any project,
+   not just this repo's directory:
+   ```sh
+   claude mcp add --transport http --scope user epistemic-stack \
+     http://localhost:3000/api/mcp/agent/mcp \
+     --header "Authorization: Bearer esk_…"
+   ```
+3. Verify: `claude mcp list` should show `epistemic-stack`. Start a new Claude Code session
+   and its tools (`search`, `record_claim`, `send_message`, `delegate_investigation`, …) are
+   available directly.
+
+Swap `--scope user` for `--scope project` (writes to `.mcp.json`, shareable via git — don't
+commit the bearer token in it) if you'd rather it apply only inside this repo. Tokens are
+per-agent and revocable anytime from the same "Connect an agent" dialog.
+
 ## Everyday commands
 
 ```sh
@@ -91,3 +121,27 @@ bunx tsc --noEmit          # typecheck
 
 There is no separate agent server: `next.config.ts` wraps the app with `withEve()`, which
 mounts the agent in `packages/web/agent/` into the same dev server under `/eve/v1/*`.
+
+## Troubleshooting
+
+- **`env-runner worker init failed` / errors querying `workflow.workflow_runs`** — you skipped
+  (or need to re-run) step 4 above. `bun run db:migrate` only applies `packages/db`'s commons
+  migrations; eve's own durable-session tables (`@workflow/world-postgres`) are a separate
+  bootstrap via `bunx workflow-postgres-setup` (run from `packages/web`). Safe to re-run anytime.
+- **Dev server prints "eve requires Node.js >=24"** — your PATH is resolving an older Node.
+  `nvm use` in the repo root (picks up `.nvmrc`), or `nvm alias default 24`.
+- **Using colima instead of Docker Desktop and `supabase start` fails with `failed to start
+  docker container "supabase_vector_...": ... mkdir ... operation not supported`** — colima's
+  VM can't bind-mount its own docker socket path into a container. Fix once per machine:
+  ```sh
+  sudo ln -sf ~/.colima/default/docker.sock /var/run/docker.sock
+  docker context use default
+  ```
+  Then re-run `supabase start`. (Also drop `credsStore` from `~/.docker/config.json` if `docker
+  run` fails with `docker-credential-desktop not found` — it's a leftover from a Docker Desktop
+  config that colima doesn't need.)
+- **"Load sample data" says no seeds found** — seeds live in `data/seeds/*.json` and are
+  regular (non-gitignored) files in the repo; if the dialog is empty, `git pull` — they're
+  added/removed independently of code changes. Regenerate one from an investigation you've
+  built locally with `packages/db/scripts/export-investigation.ts` (and
+  `export-session.ts` for a replayable chat alongside it).

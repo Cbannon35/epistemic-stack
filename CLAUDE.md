@@ -26,8 +26,9 @@ people and the eve agent. Two invariants shape every design decision:
 ```sh
 bun install                                  # repo root; bun is the package manager everywhere
 supabase start                               # local Postgres :54422 / API :54421 / Studio :54423
-bun run db:migrate                           # apply migrations (repo root)
-cd packages/web && bun run dev               # dev server (app + eve, one process)
+bun run db:migrate                           # apply commons migrations (repo root)
+cd packages/web && bunx workflow-postgres-setup   # one-time: eve's durable-session schema
+bun run dev                                  # dev server (app + eve, one process)
 
 # verification — run BOTH before considering work done:
 cd packages/web && bunx tsc --noEmit && bunx biome check .
