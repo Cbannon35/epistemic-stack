@@ -5,7 +5,9 @@ import * as schema from './schema'
 export * as schema from './schema'
 export {
   type CommonsSeed,
+  type CommonsSession,
   loadSeed,
+  loadSession,
   parseSeed,
   type SeedCounts,
 } from './seed'

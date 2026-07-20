@@ -1,3 +1,4 @@
+import { sql } from 'drizzle-orm'
 import type { Db } from './index'
 import * as schema from './schema'
 
@@ -63,6 +64,64 @@ export async function loadSeed(db: Db, seed: CommonsSeed): Promise<SeedCounts> {
         .onConflictDoNothing()
     }
     counts[key] = rows.length
+  }
+  return counts
+}
+
+// ── eve chat session (the workflow store — the replayable transcript) ────────
+
+export type CommonsSession = Record<string, unknown>
+
+type SessionBytea = { __bytea: string }
+const isBytea = (v: unknown): v is SessionBytea =>
+  typeof v === 'object' && v !== null && '__bytea' in v
+
+// FK order: everything references workflow_runs.run_id.
+const SESSION_TABLES = [
+  'workflow_runs',
+  'workflow_events',
+  'workflow_steps',
+  'workflow_stream_chunks',
+  'workflow_hooks',
+  'workflow_waits',
+]
+
+/**
+ * Insert an eve chat session (from export-session.ts) into the workflow store
+ * so the transcript replays. Idempotent. base64 bytea → Buffer; non-null
+ * objects → jsonb. Dynamic columns per table, so this uses raw sql inserts.
+ */
+export async function loadSession(db: Db, session: CommonsSession): Promise<SeedCounts> {
+  const counts: SeedCounts = {}
+  for (const table of SESSION_TABLES) {
+    const rows = (session[table] as Record<string, unknown>[] | undefined) ?? []
+    if (rows.length === 0) {
+      continue
+    }
+    for (const row of rows) {
+      const cols = Object.keys(row)
+      const colSql = sql.join(
+        cols.map((c) => sql.identifier(c)),
+        sql`, `,
+      )
+      const valSql = sql.join(
+        cols.map((c) => {
+          const v = row[c]
+          if (isBytea(v)) {
+            return sql`${Buffer.from(v.__bytea, 'base64')}`
+          }
+          if (v !== null && typeof v === 'object') {
+            return sql`${JSON.stringify(v)}::jsonb`
+          }
+          return sql`${v}`
+        }),
+        sql`, `,
+      )
+      await db.execute(
+        sql`insert into workflow.${sql.raw(`"${table}"`)} (${colSql}) values (${valSql}) on conflict do nothing`,
+      )
+    }
+    counts[table] = rows.length
   }
   return counts
 }

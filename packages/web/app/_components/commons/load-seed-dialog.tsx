@@ -20,6 +20,8 @@ type SeedItem = {
   name: string;
   title: string;
   counts: Record<string, number> | null;
+  sessionId: string | null;
+  hasChat: boolean;
 };
 
 function summarize(counts: Record<string, number> | null): string {
@@ -80,16 +82,26 @@ export function LoadSeedDialog({
           } | null;
           throw new Error(d?.error ?? "load failed");
         }
+        const data = (await res.json()) as {
+          sessionId: string | null;
+          chat: boolean;
+        };
         setDone(name);
-        // Repaint the graph/sidebar against the newly-loaded commons.
-        router.refresh();
+        // One click, one window: open the loaded room. Its graph renders and,
+        // if the seed shipped a chat session, eve's transcript replays.
+        if (data.sessionId) {
+          onOpenChange(false);
+          router.push(`/i/${data.sessionId}`);
+        } else {
+          router.refresh();
+        }
       } catch (cause) {
         setError(cause instanceof Error ? cause.message : "load failed");
       } finally {
         setLoading(null);
       }
     },
-    [router]
+    [router, onOpenChange]
   );
 
   return (
@@ -98,9 +110,9 @@ export function LoadSeedDialog({
         <DialogHeader>
           <DialogTitle>Load sample data</DialogTitle>
           <DialogDescription>
-            Load a prior investigation's claim graph into the commons — with
-            full provenance — instead of re-running it. Safe to re-run; nothing
-            is overwritten.
+            Load a prior investigation — its claim graph and, where available,
+            eve's full chat transcript — and open it in one window. Safe to
+            re-run; nothing is overwritten.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-2">
@@ -120,6 +132,7 @@ export function LoadSeedDialog({
                   <p className="truncate font-medium text-sm">{seed.title}</p>
                   <p className="truncate text-muted-foreground text-xs">
                     {summarize(seed.counts) || seed.name}
+                    {seed.hasChat ? " · chat" : ""}
                   </p>
                 </div>
                 <Button
