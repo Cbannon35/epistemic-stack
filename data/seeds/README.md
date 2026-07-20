@@ -10,7 +10,7 @@ database instead of re-running the investigation from scratch. This is the
 | File | Investigation | Contents |
 | --- | --- | --- |
 | `covid-lab-leak.json` | *Did COVID originate from a lab leak?* | 38 claims · 18 full-text sources · 69 mentions · 4 hypotheses · 61 claim↔hypothesis links |
-| `eggs.json` | *Are eggs good to eat?* | 23 claims · 20 full-text sources · 80 mentions · 3 hypotheses · 67 claim↔hypothesis links · 3 relations |
+| `eggs.json` | *Are eggs good to eat?* | 30 claims · 19 full-text sources · 80 mentions · 3 hypotheses · 67 claim↔hypothesis links · 3 relations |
 
 ## Load one
 

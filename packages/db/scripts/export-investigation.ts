@@ -1,14 +1,18 @@
 /**
  * Export one investigation's commons subgraph to a portable JSON seed.
  *
- *   POSTGRES_URL=... bun packages/db/scripts/export-investigation.ts <sessionId> [outFile]
+ *   DATABASE_URL=... bun packages/db/scripts/export-investigation.ts <sessionId> [outFile]
  *
- * The seed is scoped by the receipt spine: every `contribution` stamped with
- * this session, plus every domain row (claim / source / mention / relation /
- * crux / hypothesis / link / assessment) that FKs one of those contributions,
- * plus the contributors who made them and the investigation row itself. Claim
- * embeddings ARE included so dedup/search work the moment the seed is loaded.
- * Load it with load-seed.ts into any fresh commons.
+ * Scoping MIRRORS the app's graph builder (lib/graph-data.ts): the edges
+ * (mentions / relations / cruxes / hypothesis-links / hypotheses / assessments)
+ * stamped with this session are in scope, and the claim/source/hypothesis NODES
+ * are whatever those edges reference — regardless of which session first created
+ * them. This matters because claims are content-addressed and deduped globally:
+ * a claim recorded elsewhere and re-confirmed here shows in this graph via its
+ * mention, so the seed must include it too (the "many sources, one claim"
+ * compounding — the whole point). Every contribution referenced by an exported
+ * row is included (a superset of this session's contributions) so the seed is
+ * FK-complete and loadable into a fresh commons. Claim embeddings are included.
  */
 import { eq, inArray } from 'drizzle-orm'
 import { createDb, schema } from '../src/index.ts'
@@ -31,27 +35,94 @@ if (investigations.length === 0) {
   process.exit(1)
 }
 
-const contributions = await db
+// The session's own receipts scope the EDGES.
+const sessionContributions = await db
   .select()
   .from(schema.contributions)
   .where(eq(schema.contributions.sessionId, sessionId))
-const contributionIds = contributions.map((c) => c.id)
-const contributorIds = [...new Set(contributions.map((c) => c.contributorId))]
-// Empty guard: inArray([]) is a valid-but-always-false filter.
-const inContrib = inArray(schema.sources.contributionId, contributionIds)
+const sessionContribIds = sessionContributions.map((c) => c.id)
 
-const [
-  contributors,
-  investigationTurns,
-  sources,
-  claims,
-  mentions,
-  relations,
-  cruxes,
-  hypotheses,
-  hypothesisLinks,
-  assessments,
-] = await Promise.all([
+const idIn = <T>(col: T) => inArray(col as never, sessionContribIds)
+
+const [mentions, relations, cruxes, hypLinksScoped, hypScoped, assessments] =
+  sessionContribIds.length
+    ? await Promise.all([
+        db.select().from(schema.mentions).where(idIn(schema.mentions.contributionId)),
+        db.select().from(schema.relations).where(idIn(schema.relations.contributionId)),
+        db.select().from(schema.cruxes).where(idIn(schema.cruxes.contributionId)),
+        db.select().from(schema.hypothesisLinks).where(idIn(schema.hypothesisLinks.contributionId)),
+        db.select().from(schema.hypotheses).where(idIn(schema.hypotheses.contributionId)),
+        db.select().from(schema.assessments).where(idIn(schema.assessments.contributionId)),
+      ])
+    : [[], [], [], [], [], []]
+
+// NODE ids the edges reference (graph-data.ts §"claimIds"/"sourceIds").
+const claimIds = new Set<string>()
+const sourceIds = new Set<string>()
+const hypIds = new Set<string>()
+for (const m of mentions) {
+  claimIds.add(m.claimId)
+  sourceIds.add(m.sourceId)
+}
+for (const r of relations) {
+  claimIds.add(r.fromClaimId)
+  claimIds.add(r.toClaimId)
+}
+for (const x of cruxes) {
+  if (x.claimId) {
+    claimIds.add(x.claimId)
+  }
+}
+for (const l of hypLinksScoped) {
+  claimIds.add(l.claimId)
+  hypIds.add(l.hypothesisId)
+}
+for (const h of hypScoped) {
+  hypIds.add(h.id)
+}
+
+const idList = (s: Set<string>) => (s.size ? [...s] : ['\0none'])
+const [claims, sources, hypotheses] = await Promise.all([
+  db
+    .select()
+    .from(schema.claims)
+    .where(inArray(schema.claims.canonicalId, idList(claimIds))),
+  db
+    .select()
+    .from(schema.sources)
+    .where(inArray(schema.sources.id, idList(sourceIds))),
+  db
+    .select()
+    .from(schema.hypotheses)
+    .where(inArray(schema.hypotheses.id, idList(hypIds))),
+])
+
+// FK closure: every contribution referenced by an exported row must ship, or
+// the seed won't load. This is a SUPERSET of the session's contributions — it
+// adds the foreign-session receipts that first created any merged-in claim.
+const neededContribIds = new Set(sessionContribIds)
+for (const row of [
+  ...claims,
+  ...sources,
+  ...mentions,
+  ...relations,
+  ...cruxes,
+  ...hypotheses,
+  ...hypLinksScoped,
+  ...assessments,
+]) {
+  const cid = (row as { contributionId?: string | null }).contributionId
+  if (cid) {
+    neededContribIds.add(cid)
+  }
+}
+const contributions = await db
+  .select()
+  .from(schema.contributions)
+  .where(inArray(schema.contributions.id, [...neededContribIds]))
+const contributorIds = [...new Set(contributions.map((c) => c.contributorId))]
+
+const [contributors, investigationTurns] = await Promise.all([
   contributorIds.length
     ? db.select().from(schema.contributors).where(inArray(schema.contributors.id, contributorIds))
     : Promise.resolve([]),
@@ -59,26 +130,6 @@ const [
     .select()
     .from(schema.investigationTurns)
     .where(eq(schema.investigationTurns.sessionId, sessionId)),
-  db.select().from(schema.sources).where(inContrib),
-  db.select().from(schema.claims).where(inArray(schema.claims.contributionId, contributionIds)),
-  db.select().from(schema.mentions).where(inArray(schema.mentions.contributionId, contributionIds)),
-  db
-    .select()
-    .from(schema.relations)
-    .where(inArray(schema.relations.contributionId, contributionIds)),
-  db.select().from(schema.cruxes).where(inArray(schema.cruxes.contributionId, contributionIds)),
-  db
-    .select()
-    .from(schema.hypotheses)
-    .where(inArray(schema.hypotheses.contributionId, contributionIds)),
-  db
-    .select()
-    .from(schema.hypothesisLinks)
-    .where(inArray(schema.hypothesisLinks.contributionId, contributionIds)),
-  db
-    .select()
-    .from(schema.assessments)
-    .where(inArray(schema.assessments.contributionId, contributionIds)),
 ])
 
 const seed = {
@@ -95,7 +146,7 @@ const seed = {
       relations: relations.length,
       cruxes: cruxes.length,
       hypotheses: hypotheses.length,
-      hypothesisLinks: hypothesisLinks.length,
+      hypothesisLinks: hypLinksScoped.length,
       assessments: assessments.length,
     },
   },
@@ -108,7 +159,7 @@ const seed = {
   relations,
   cruxes,
   hypotheses,
-  hypothesisLinks,
+  hypothesisLinks: hypLinksScoped,
   assessments,
   investigations,
   investigationTurns,
@@ -116,6 +167,6 @@ const seed = {
 
 await Bun.write(outFile, JSON.stringify(seed, null, 2))
 console.log(
-  `wrote ${outFile} — ${claims.length} claims, ${sources.length} sources, ${hypotheses.length} hypotheses, ${hypothesisLinks.length} links`,
+  `wrote ${outFile} — ${claims.length} claims, ${sources.length} sources, ${hypotheses.length} hypotheses, ${hypLinksScoped.length} links, ${contributions.length} contributions`,
 )
 process.exit(0)
