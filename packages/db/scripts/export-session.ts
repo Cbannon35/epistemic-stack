@@ -25,22 +25,20 @@ const raw = (sql: string) =>
   db.execute(sql) as unknown as Promise<Record<string, unknown>[]>
 const q = (s: string) => s.replace(/'/g, "''")
 
-// A session = its entry run (id === sessionId) + its turn runs, but eve stores
-// no queryable parent link between them (execution_context is null; the ULID
-// prefixes diverge). So: if the store holds exactly this one session's runs,
-// export ALL of them (the correct, complete set). If it holds more, we can't
-// reliably attribute turn runs — export all and warn.
-const allRuns = await raw('select id from workflow.workflow_runs')
-const entry = allRuns.find((r) => r.id === sessionId)
-if (!entry) {
+// A session = its entry run (id === sessionId) + its turn runs. eve stores no
+// queryable parent link (execution_context is null), but a session's runs share
+// a ULID prefix: `wrun_` + the 8 high timestamp chars — entry and turn are minted
+// within the same ~256ms window, while separate investigations (minted seconds+
+// apart) differ earlier. Scope by that 13-char prefix so a multi-session store
+// exports only THIS session's runs.
+const runPrefix = sessionId.slice(0, 13)
+const runRows = await raw(
+  `select id from workflow.workflow_runs where id like '${q(runPrefix)}%'`
+)
+const runIds: string[] = runRows.map((r) => r.id as string)
+if (!runIds.includes(sessionId)) {
   console.error(`no entry workflow run with id ${sessionId}`)
   process.exit(1)
-}
-const runIds: string[] = allRuns.map((r) => r.id)
-if (runIds.length > 8) {
-  console.warn(
-    `WARNING: workflow store has ${runIds.length} runs; exporting ALL of them (turn runs can't be attributed to one session). Load into a store dedicated to this seed.`,
-  )
 }
 const inRuns = runIds.map((id) => `'${q(id)}'`).join(',')
 

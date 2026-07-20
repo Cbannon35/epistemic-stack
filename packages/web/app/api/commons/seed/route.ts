@@ -44,7 +44,7 @@ async function readGraphSeed(
   if (
     !file.endsWith(".json") ||
     file.endsWith(".session.json") ||
-    file.endsWith(".transcript.json")
+    file.endsWith("-transcript.json")
   ) {
     return null;
   }
